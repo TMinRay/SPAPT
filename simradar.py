@@ -12,16 +12,12 @@ def fftconvolve(ax,ay,axis=-1):
 
 def DBF(gaz,gele,wl,a0,element_pos,we):
     k=np.pi*2/wl
-    # thetaxy = np.arctan2(np.tan(thetay),np.tan(thetax))
-    # phixy = np.arctan(np.sqrt(np.tan(thetay)**2+np.tan(thetax)**2))
     ar = np.array([np.sin(gele)*np.sin(gaz), np.sin(gele)*np.cos(gaz), np.cos(gele)])
     ar = ar-a0
-    # print(ar)
     Exy=np.zeros((*we.shape[:2],*ar.shape[1:]))
     for ie in range(element_pos.shape[1]):
         de = element_pos[:,ie,:]
         element_phase = np.sum(ar[np.newaxis,:,:,:]*de[:,:,np.newaxis,np.newaxis],axis=1)
-        # print(element_phase*180/np.pi)|
         xe = we[:,:,ie]
         Exy = Exy + xe[:,:,np.newaxis,np.newaxis]*np.exp(1j*k*element_phase)[:,np.newaxis,:,:]
     return Exy
@@ -79,11 +75,6 @@ class RadarHost:
             Etar_list = [ 5, 0, 0]          # target elevation
             Vtar_list = [60, -40, 0]         # fix target radial velocity
             rcs_list =  [10, 1, 1]           # radar cross section   m^2
-            # Rtar_list = [ 30]              # target range
-            # Atar_list = [ 90]              # target azimuth
-            # Etar_list = [ 30]              # target elevation
-            # Vtar_list = [60]               # fix target radial velocity
-            # rcs_list =  [10]         # radar cross section   m^2
             self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
             self.DBF_r = Rtar_list[0]
             self.npulse = 2048
@@ -142,7 +133,6 @@ class RadarHost:
         self.tx = tx
         self.txp = txp
         tf = self.txp
-        # fast_time = tf[np.newaxis,:]
         Faxe=np.arange(-1/2/self.ts,1/2/self.ts,1/self.ts/tf.size)  # frequency after fft
         self.Faxe = Faxe[np.newaxis,:]
 
@@ -198,19 +188,6 @@ class RadarHost:
     def summary_object(self):
         for l,v in zip(['Range','Vr','RCS','Azimuth','Zenith'],self.target_para):
             print('\t'+l+'\t\t\t',v)
-        #             Rtar_list = [ 30, 30, 30]        # target range
-        #     Atar_list = [ 90, 0, 0]           # target azimuth
-        #     Etar_list = [ 5, 0, 0]          # target elevation
-        #     Vtar_list = [60, -40, 0]         # fix target radial velocity
-        #     rcs_list =  [10, 1, 1]           # radar cross section   m^2
-        #     # Rtar_list = [ 30]              # target range
-        #     # Atar_list = [ 90]              # target azimuth
-        #     # Etar_list = [ 30]              # target elevation
-        #     # Vtar_list = [60]               # fix target radial velocity
-        #     # rcs_list =  [10]         # radar cross section   m^2
-        #     self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
-        # print(f'\t current orientation \t { self.cur_ori % 360 :.1f} degree')
-        # print(f'\t platform speed \t { self.platform_dps :.1f} dps')
 
     def fire_pulse(self):
         element_loct = self.element_pos
@@ -251,18 +228,13 @@ class RadarHost:
 
 
     def beamforming(self,element_loct,rx, bftype ='All Digital'):
-        # element_loct = self.element_pos
-        # rx = self.rx_buf
         tx = self.tx
         crx = rx[:,:tx.shape[0]//2,:]*np.conj(tx[np.newaxis,:tx.shape[0]//2,np.newaxis])
         Fr = np.arange(-1/2/self.ts,1/2/self.ts,1/self.ts/self.nfft)
         r = -Fr/(2*self.chirp)*constants.c/2
-        # Beam[np.abs(r-30)==np.min(np.abs(r-30)),:,:]
-        # crx[:,clasper:clasper+2,:]
         crx = np.fft.fftshift(np.fft.fft(crx,n = self.nfft,axis=1),axes=1)
         clasper = np.where(np.abs(r-self.DBF_r)==np.min(np.abs(r-self.DBF_r)))[0][0]
         Eloc = DBF(self.thetaaz,self.thetaele,self.wavelength,self.a0,element_loct,crx[:,clasper:clasper+2,:])
-        # Eloc = np.fft.fftshift(np.fft.fft(Eloc,n = self.nfft,axis=1),axes=1)
         Beam = np.mean(np.abs(Eloc)**2,axis=0)
         self.plot_data = Beam[0,:,:]
         if hasattr(self, 'pcm'):
@@ -282,8 +254,6 @@ class RadarHost:
 
     def init_beam(self, bftype):
         pcm = self.ax.pcolormesh(np.squeeze(self.thetax),np.squeeze(self.thetay),np.squeeze(self.plot_data))
-        # plt.ylim(np.min(self.thetay),np.max(self.thetay))
-        # plt.xlim(np.min(self.thetax),np.max(self.thetax))
         self.ax.set_xlabel(r'$\theta_x$')
         self.ax.set_ylabel(r'$\theta_y$')
         self.ax.set_title(bftype + f" R = {self.DBF_r:d} m")
@@ -299,9 +269,6 @@ class RadarHost:
         Fr = np.arange(-1/2/self.ts,1/2/self.ts,1/self.ts/self.nfft)
         r = -Fr/(2*self.chirp)*constants.c/2
         crxu = np.mean(rx[:,:tx.shape[0]//2,:],axis=2)*np.conj(tx[np.newaxis,:tx.shape[0]//2])
-        # crxd = rx[:,-tx.shape[0]//2:,:]*np.conj(tx[np.newaxis,tx.shape[0]//2:,np.newaxis])
-        # crxu = np.mean(crxu,axis=2)
-        # crxd = np.mean(crxd,axis=2)
         nv=int(2**(np.log(crxu.shape[0])//np.log(2)+1))
         rdm=np.abs(np.fft.fftshift(np.fft.fft(np.fft.fftshift(np.fft.fft(crxu,n=nv,axis=0),axes=0),n=self.nfft,axis=1),axes=1))
         Fv=np.arange(-self.PRF/2,self.PRF/2,self.PRF/nv)
@@ -341,12 +308,6 @@ class RadarHost:
                     self.fire_pulse()
                     elapsed_time = time.time() - tic
                     print(f"Fire {self.npulse:d} pulses CPU Elapsed Time: {elapsed_time:.2f} seconds")
-                    # if self.state == "initial":
-                    #     self.initial_state()
-                    # elif self.state == "state1":
-                    #     self.state1()
-                    # elif self.state == "state2":
-                    #     self.state2()
             time.sleep(self.fire_secs)
 
     def wait(self):
@@ -373,10 +334,7 @@ def command_handle(radarobj):
         cmds = cmd.split()
         while retries < max_retries:
             if not radarobj.lock.locked():
-                # modify_shared_resource()
-                # break  # Operation succeeded, exit the loop
                 if cmds[0]=='p':
-                    # radarobj.pause(int(cmd[1:]))
                     radarobj.handle_platform_cmd(cmds)
                 elif cmds[0]=='d':
                     radarobj.handle_display_cmd(cmds)
