@@ -38,21 +38,22 @@ class RadarHost:
         self.on = True
 
         self.TS = 290        # noise temperature K
-        self.npulse = 64    # number of pulses in sequence
-        self.nfft = 1024      # zero padding in fft
+        self.npulse = 512    # number of pulses in sequence
         self.Pt = 100        # peak power    W
         self.G = 100         # Gain
         self.F0 = 10.35e9       # carrier frequency Hz
         self.wavelength = constants.c/self.F0     # radar wavelength  m
         self.B = 20e6
-        self.ts = 2e-8/3       # sample rate   s
-        self.PRF = 600.e3     # PRF   Hz
-        self.PRT = 1/self.PRF
-        self.Tx = 1/self.PRF      # pulse width
-        self.Va = constants.c*self.PRF/4/self.F0
-        self.Lx = self.Tx/self.ts
-        self.chirp = self.B/self.Tx
-        self.Ra = constants.c/self.PRF/2    # maximum unambiguous range
+        self.PRF = 300.e3     # PRF   Hz
+        self.set_transceiver_prf(self.PRF)
+        # self.PRT = 1/self.PRF
+        # self.Tx = 1/self.PRF      # pulse width
+        # self.Va = constants.c*self.PRF/4/self.F0
+        # self.chirp = self.B/self.Tx
+        # self.ts = self.PRF/(2*(2*self.chirp))       # sample rate   s
+        # self.nfft = int(2**(np.log(1/self.PRF/self.ts)//np.log(2)+2))      # zero padding in range fft
+        # self.Lx = self.Tx/self.ts
+        # self.Ra = constants.c/self.PRF/2    # maximum unambiguous range
         self.platform_dps = 0
         self.fire_secs = 3
 
@@ -63,7 +64,7 @@ class RadarHost:
         theta0 = 0 * np.pi/180  # azimuth y->x
         phi0 = 0 * np.pi/180    #zenith
         self.a0 = np.array([np.sin(phi0)*np.sin(theta0), np.sin(phi0)*np.cos(theta0), np.cos(phi0)])[:,np.newaxis,np.newaxis]
-        self.set_udchrip_waveform()
+        # self.set_udchrip_waveform()
         self.set_default_target()
         self.set_default_beams()
         self.exit = False
@@ -106,11 +107,11 @@ class RadarHost:
             print("invalid mission command.")
 
     def set_default_target(self):
-        Rtar_list = [ 30, 30, 30]        # target range
-        Atar_list = [ 60+180, 90, 0]              # target azimuth
-        Etar_list = [ 20, 30, 0]              # target elevation
+        Rtar_list = [ 50, 50, 50]        # target range
+        Atar_list = [ 0, 90, 45]              # target azimuth
+        Etar_list = [ 0, 30, 45]              # target elevation
         Vtar_list = [60, -40, 0]               # fix target radial velocity
-        rcs_list = [10, 10, 10]         # radar cross section   m^2
+        rcs_list = [2, 5, 10]         # radar cross section   m^2
         self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
         self.DBF_r = Rtar_list[0]
 
@@ -139,9 +140,23 @@ class RadarHost:
     def set_transceiver_npulse(self, inpara):
         self.npulse = inpara
 
+    def set_transceiver_prf(self, inpara):
+        self.PRF = inpara
+        self.PRT = 1/self.PRF
+        self.Tx = 1/self.PRF      # pulse width
+        self.Va = constants.c*self.PRF/4/self.F0
+        self.chirp = self.B/self.Tx
+        self.ts = self.PRF/(2*(2*self.chirp))       # sample rate   s
+        self.nfft = int(2**(np.log(1/self.PRF/self.ts)//np.log(2)+2))      # zero padding in range fft
+        self.Lx = self.Tx/self.ts
+        self.Ra = constants.c/self.PRF/2
+        self.set_udchrip_waveform()
+
     def handle_transceiver_cmd(self,cmds):
         if cmds[1]=='n':
             self.set_transceiver_npulse(int(cmds[2]))
+        elif cmds[1]=='prf':
+            self.set_transceiver_prf(float(cmds[2]))
         else:
             print("invalid transceiver command.")
 
@@ -154,6 +169,7 @@ class RadarHost:
     def update_platform_orientation(self):
         self.element_pos = element_rotate(self.element_loc0, self.cur_ori + self.platform_dps*np.arange(self.npulse)*self.PRT)
         self.cur_ori = self.cur_ori + self.platform_dps*self.fire_secs
+        self.cur_ori = self.cur_ori % 360
 
     def handle_platform_cmd(self,cmds):
         if cmds[1]=='o':
@@ -238,7 +254,7 @@ class RadarHost:
         Beam = np.mean(np.abs(Eloc)**2,axis=0)
         self.plot_data = Beam[0,:,:]
         if hasattr(self, 'pcm'):
-            self.update_beam()
+            self.update_pcm()
         else:
             self.init_beam(bftype)
 
@@ -260,26 +276,39 @@ class RadarHost:
         plt.colorbar(pcm)
         self.pcm = pcm
 
-    def update_beam(self):
+    def update_pcm(self,title = None):
         self.pcm.set_array(self.plot_data.ravel())
+        if title is not None:
+            self.ax.set_title(title)
 
-    def range_doppler_map(self):
+    def range_doppler_map(self,dummy=None):
         rx = self.rx_buf
         tx = self.tx
         Fr = np.arange(-1/2/self.ts,1/2/self.ts,1/self.ts/self.nfft)
         r = -Fr/(2*self.chirp)*constants.c/2
         crxu = np.mean(rx[:,:tx.shape[0]//2,:],axis=2)*np.conj(tx[np.newaxis,:tx.shape[0]//2])
-        nv=int(2**(np.log(crxu.shape[0])//np.log(2)+1))
+        nv=int(2**(np.log(crxu.shape[0])//np.log(2)+2))
         rdm=np.abs(np.fft.fftshift(np.fft.fft(np.fft.fftshift(np.fft.fft(crxu,n=nv,axis=0),axes=0),n=self.nfft,axis=1),axes=1))
         Fv=np.arange(-self.PRF/2,self.PRF/2,self.PRF/nv)
-        rdm = 10*np.log10(rdm)
-        pcm = self.ax.pcolormesh(-Fv/2*self.wavelength,r,np.transpose(rdm))
+        # rdm = 10*np.log10(rdm)
+        self.Vaxes = -Fv/2*self.wavelength
+        self.raxes = r
+        self.plot_data = np.transpose(rdm)
+        pt = f" Phaser orientation = {int(self.cur_ori):d}"+r'$^o$'
+        if hasattr(self, 'pcm'):
+            self.update_pcm(pt)
+        else:
+            self.init_rdm(pt)
+
+    def init_rdm(self,title):
+        pcm = self.ax.pcolormesh(self.Vaxes,self.raxes,self.plot_data)
         self.ax.set_xlim(-100,100)
-        self.ax.set_ylim(0,400)
+        self.ax.set_ylim(0,200)
         self.ax.set_xlabel('Doppler velocity (m/s)')
         self.ax.set_ylabel('Range (m)')
         plt.colorbar(pcm)
         self.pcm = pcm
+        self.ax.set_title(title)
 
     def handle_display_cmd(self,cmds):
         fig, ax = plt.subplots()
@@ -293,6 +322,7 @@ class RadarHost:
             animation = FuncAnimation(fig, self.subarray, frames=1, interval=self.fire_secs*1e3)
         elif cmds[1]=='r':
             self.range_doppler_map()
+            animation = FuncAnimation(fig, self.range_doppler_map, frames=1, interval=self.fire_secs*1e3)
         else:
             print("invalid beamforming command.")
         plt.show()
