@@ -38,6 +38,7 @@ class RadarHost:
         self.on = True
 
         self.TS = 290        # noise temperature K
+        self.pulse_interval = 1 # intergal pulses inveral (trick for saving resources in simulation)
         self.npulse = 512    # number of pulses in sequence
         self.Pt = 100        # peak power    W
         self.G = 100         # Gain
@@ -46,17 +47,8 @@ class RadarHost:
         self.B = 20e6
         self.PRF = 300.e3     # PRF   Hz
         self.set_transceiver_prf(self.PRF)
-        # self.PRT = 1/self.PRF
-        # self.Tx = 1/self.PRF      # pulse width
-        # self.Va = constants.c*self.PRF/4/self.F0
-        # self.chirp = self.B/self.Tx
-        # self.ts = self.PRF/(2*(2*self.chirp))       # sample rate   s
-        # self.nfft = int(2**(np.log(1/self.PRF/self.ts)//np.log(2)+2))      # zero padding in range fft
-        # self.Lx = self.Tx/self.ts
-        # self.Ra = constants.c/self.PRF/2    # maximum unambiguous range
         self.platform_dps = 0
         self.fire_secs = 3
-
         de = self.wavelength/2
         xx,yy = np.meshgrid(np.arange(-3.5,3.6,1),np.arange(-1.5,1.6,1))
         self.element_loc0 = np.array([xx.flatten(),yy.flatten(),np.zeros(xx.size)]).transpose()*de
@@ -64,34 +56,33 @@ class RadarHost:
         theta0 = 0 * np.pi/180  # azimuth y->x
         phi0 = 0 * np.pi/180    #zenith
         self.a0 = np.array([np.sin(phi0)*np.sin(theta0), np.sin(phi0)*np.cos(theta0), np.cos(phi0)])[:,np.newaxis,np.newaxis]
-        # self.set_udchrip_waveform()
         self.set_default_target()
         self.set_default_beams()
         self.exit = False
 
     def handle_mission_cmd(self, cmds):
-        if int(cmds[1]) == 1:
-            Rtar_list = [ 30, 30, 30]        # target range
-            Atar_list = [ 90, 0, 0]           # target azimuth
-            Etar_list = [ 5, 0, 0]          # target elevation
-            Vtar_list = [60, -40, 0]         # fix target radial velocity
-            rcs_list =  [10, 1, 1]           # radar cross section   m^2
+        if int(cmds[1]) == 0:
+            self.set_default_target()
+        elif int(cmds[1]) == 1:
+            Rtar_list = [ 50, 50, 50]        # target range
+            Atar_list = [ 0, 90, 45]              # target azimuth
+            Etar_list = [ 0, 30, 45]              # target elevation
+            Vtar_list = [60, -40, 0]               # fix target radial velocity
+            rcs_list = [2, 5, 10]         # radar cross section   m^2
             self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
             self.DBF_r = Rtar_list[0]
-            self.npulse = 2048
-            # self.platform_dps = 360*self.PRF/self.npulse
-            self.platform_dps = 0
+            self.platform_dps = 185
+            self.pulse_interval = self.PRF//self.npulse
         elif int(cmds[1]) == 2:
-            Rtar_list = [ 30]        # target range
-            Atar_list = [ 90]              # target azimuth
-            Etar_list = [ -5]              # target elevation
-            Vtar_list = [60]               # fix target radial velocity
-            rcs_list =  [10]         # radar cross section   m^2
+            Rtar_list = [ 50, 50, 50]        # target range
+            Atar_list = [ 0, 90, 45]              # target azimuth
+            Etar_list = [ 0, 30, 45]              # target elevation
+            Vtar_list = [0, 0, 0]               # fix target radial velocity
+            rcs_list = [2, 5, 10]         # radar cross section   m^2
             self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
             self.DBF_r = Rtar_list[0]
-            self.npulse = 2048
-            # self.platform_dps = 360*self.PRF/self.npulse
-            self.platform_dps = 0
+            self.platform_dps = 185
+            self.pulse_interval = self.PRF//self.npulse
         elif int(cmds[1]) == 3:
             Rtar_list = [ 30]        # target range
             Atar_list = [ 90]              # target azimuth
@@ -106,15 +97,6 @@ class RadarHost:
         else:
             print("invalid mission command.")
 
-    def set_default_target(self):
-        Rtar_list = [ 50, 50, 50]        # target range
-        Atar_list = [ 0, 90, 45]              # target azimuth
-        Etar_list = [ 0, 30, 45]              # target elevation
-        Vtar_list = [60, -40, 0]               # fix target radial velocity
-        rcs_list = [2, 5, 10]         # radar cross section   m^2
-        self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
-        self.DBF_r = Rtar_list[0]
-
     def set_default_beams(self):
         beamx = np.arange(-45,46,1.5) * np.pi/180
         beamy = np.arange(-45,46,1.5) * np.pi/180
@@ -123,6 +105,32 @@ class RadarHost:
         self.thetaaz = np.arctan2(np.sin(thetax),np.sin(thetay))
         self.thetax = thetax*180/np.pi
         self.thetay = thetay*180/np.pi
+
+    def add_new_target(self, inpara):
+        nt = (map(float,inpara.split(',')))
+        for var, tp in zip(nt,self.target_para):
+            tp.append(var)
+
+    def clear_target(self):
+        self.target_para = [[],[],[],[],[]]
+
+    def handle_object_cmd(self,cmds):
+        if cmds[1]=='a':
+            self.add_new_target(cmds[2])
+        elif cmds[1]=='c':
+            self.clear_target()
+        else:
+            print("invalid object command.")
+
+    def set_default_target(self):
+        Rtar_list = [ 50, 50, 50]        # target range
+        Atar_list = [ 0, 90, 45]              # target azimuth
+        Etar_list = [ 0, 30, 45]              # target elevation
+        Vtar_list = [60, -40, 0]               # fix target radial velocity
+        rcs_list = [2, 5, 10]         # radar cross section   m^2
+        self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
+        self.DBF_r = Rtar_list[0]
+        self.pulse_interval = 1
 
     def set_udchrip_waveform(self):
         txp = np.arange(0,self.Tx,self.ts)    # discrete time of pulse
@@ -167,7 +175,7 @@ class RadarHost:
         self.platform_dps = inpara
 
     def update_platform_orientation(self):
-        self.element_pos = element_rotate(self.element_loc0, self.cur_ori + self.platform_dps*np.arange(self.npulse)*self.PRT)
+        self.element_pos = element_rotate(self.element_loc0, self.cur_ori + self.platform_dps*np.arange(self.npulse)*self.PRT*self.pulse_interval)
         self.cur_ori = self.cur_ori + self.platform_dps*self.fire_secs
         self.cur_ori = self.cur_ori % 360
 
@@ -198,6 +206,7 @@ class RadarHost:
 
     def summary_transceiver(self):
         print(f'\t n pulse / fire \t { self.npulse :d} ')
+        print(f'\t pulse interval \t { int(self.pulse_interval) :d} ')
         print(f'\t PRF \t\t\t { self.PRF/1e3 :.1f} kHz')
         print(f'\t F0 \t\t\t { self.F0/1e9 :.1f} GHz')
 
@@ -209,7 +218,7 @@ class RadarHost:
         element_loct = self.element_pos
         target_p = self.target_para
         tx = self.tx
-        tm = np.arange(self.npulse)*self.PRT
+        tm = np.arange(self.npulse)*self.PRT*self.pulse_interval
         tm = tm[:,np.newaxis]
         tf = self.txp
         fast_time = tf[np.newaxis,:]
@@ -253,10 +262,12 @@ class RadarHost:
         Eloc = DBF(self.thetaaz,self.thetaele,self.wavelength,self.a0,element_loct,crx[:,clasper:clasper+2,:])
         Beam = np.mean(np.abs(Eloc)**2,axis=0)
         self.plot_data = Beam[0,:,:]
+        pt = bftype + f" R = {self.DBF_r:d} m "+r'$\alpha$'+f" = {int(self.cur_ori):d}"+r'$^o$'
+        pt = pt + r'$,\Delta \alpha$'+f" = {int(self.platform_dps*self.npulse*self.PRT*self.pulse_interval):d}"+r'$^o$'
         if hasattr(self, 'pcm'):
-            self.update_pcm()
+            self.update_pcm(pt)
         else:
-            self.init_beam(bftype)
+            self.init_beam(pt)
 
     def all_digital(self,dummy=None):
         self.beamforming(self.element_pos,self.rx_buf, bftype ='All Digital')
@@ -268,11 +279,11 @@ class RadarHost:
         subarray_loc0 = np.mean(element_loct.reshape((element_loct.shape[0],4,8,3)), axis=1)
         self.beamforming(subarray_loc0,subarray_rx, bftype ='Subarray')
 
-    def init_beam(self, bftype):
+    def init_beam(self, title = None):
         pcm = self.ax.pcolormesh(np.squeeze(self.thetax),np.squeeze(self.thetay),np.squeeze(self.plot_data))
         self.ax.set_xlabel(r'$\theta_x$')
         self.ax.set_ylabel(r'$\theta_y$')
-        self.ax.set_title(bftype + f" R = {self.DBF_r:d} m")
+        self.ax.set_title(title)
         plt.colorbar(pcm)
         self.pcm = pcm
 
@@ -355,7 +366,13 @@ class RadarHost:
                 time.sleep(1)
 
 def command_handle(radarobj):
-    cmd = input('Command Center await.\n')
+    cmdbuf = input('Command Center await.\n')
+    cmd = ''
+    for c in cmdbuf:
+        if c=='\b':
+            cmd=cmd[:-1]
+        else:
+            cmd+=c
 
     def response(radarobj, cmd):
         max_retries = 10
@@ -374,6 +391,8 @@ def command_handle(radarobj):
                     radarobj.handle_summary(cmds)
                 elif cmds[0]=='m':
                     radarobj.handle_mission_cmd(cmds)
+                elif cmds[0]=='o':
+                    radarobj.handle_object_cmd(cmds)
                 elif cmds[0]=='q':
                     radarobj.exit = True
                     exit()
