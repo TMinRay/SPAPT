@@ -33,11 +33,22 @@ $ s p
 
 | First | second | Parameters | Description |
 | --- | --- | --- | --- |
-| s | --- | --- | summary of current radar parameters|
-| s |  p  | --- | summary only platform parameters|
-| s |  t  | --- | summary only transceiver parameters|
-| s |  o  | --- | summary only objects(target) parameters|
-
+| s | --- | --- | Summary of current radar parameters|
+| s |  p  | --- | Summary only platform parameters|
+| s |  t  | --- | Summary only transceiver parameters|
+| s |  o  | --- | Summary only objects(target) parameters|
+| --- | --- | --- | --- |
+| d |  a  | --- | Display All digital beamforming result|
+| d |  s  | --- | Display Subarray beamforming result|
+| d |  r  | --- | Display Range Doppler Map|
+| --- | --- | --- | --- |
+| m |  Number(0-2)  | --- | Change to predefined scenario (Mission)|
+| --- | --- | --- | --- |
+| p |  o  | Number | Change Phaser current orientation (deg)|
+| p |  s  | Number | Change Phaser roation speed (deg/s)|
+| --- | --- | --- | --- |
+| t |  n  | Number | Change Numbers of pulses / processing |
+| t |  prf  | Number | Change Pulse Repetition Frequency |
 
 ## Contributing
 
