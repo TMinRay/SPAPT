@@ -24,9 +24,43 @@ interactive commands use ` `(space) to differentiate blocks.
 ## Example Results
 To check current platform status.
 ```SPAPT
-$ s p
+# Summary current simulator
+$ s
+platform
          current orientation     0.0 degree
          platform speed          0.0 dps
+
+transceiver
+         n pulse / fire          512
+         pulse interval          1
+         PRF                     300.0 kHz
+         F0                      10.3 GHz
+
+objects
+        Range                    [50, 50, 50]
+        Vr                       [60, -40, 0]
+        RCS                      [2, 5, 10]
+        Azimuth                  [0, 90, 45]
+        Zenith                   [0, 30, 45]
+# fix panel all digital beamforming
+$ d a
+# fix panel subarray beamforming
+$ d s
+
+# change to mission 1 (spin panel)
+m 1
+# spin panel subarray beamforming
+$ d s
+# spin panel all digital
+$ d a
+
+# return to default mission 0
+m 0
+# plot rdm
+d r
+# set orienation to 45
+p o 45
+d r
 ```
 
 ### command blocks
