@@ -10,7 +10,7 @@ This is the digital singal processing simulation model for the Analog device cn0
 ## Installation
 SPAPT only needs [numpy](https://pypi.org/project/numpy/), [matplotlib](https://pypi.org/project/matplotlib/) and [scipy](https://pypi.org/project/scipy/).
 
-Simply clone SPART form repository.
+Simply clone SPAPT form repository.
 
 ```bash
 git clone https://github.com/TMinRay/SPAPT.git
@@ -26,7 +26,6 @@ $ python simradar
 interactive commands use ` `(space) to differentiate blocks.
 
 ## Example Results
-To check current platform status.
 ```SPAPT
 # Summary current simulator
 $ s
@@ -48,25 +47,35 @@ objects
         Zenith                   [0, 30, 45]
 # fix panel all digital beamforming
 $ d a
+```
+![All_Digital](/image/All_Digital.png)
+```SPAPT
 # fix panel subarray beamforming
 $ d s
+```
+![Subarray_Fix](/image/Subarray_Fix.png)
 
+```SPAPT
 # change to mission 1 (spin panel)
 m 1
 # spin panel subarray beamforming
 $ d s
-# spin panel all digital
-$ d a
+```
+![Subarry_spin](/image/Subarry_spin.png)
 
+```SPAPT
 # return to default mission 0
 m 0
 # plot rdm
 d r
+```
+![rdm0](/image/rdm_0_deg.png)
+```SPAPT
 # set orienation to 45
 p o 45
 d r
 ```
-
+![rdm45](/image/rdm_45_deg.png)
 ### command blocks
 
 | First | second | Parameters | Description |
