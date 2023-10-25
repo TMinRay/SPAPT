@@ -49,6 +49,9 @@ $ s p
 | --- | --- | --- | --- |
 | t |  n  | Number | Change Numbers of pulses / processing |
 | t |  prf  | Number | Change Pulse Repetition Frequency |
+| --- | --- | --- | --- |
+| q | --- | --- | Turn off simulator |
+
 
 ## Contributing
 
