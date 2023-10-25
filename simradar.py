@@ -63,11 +63,13 @@ class RadarHost:
     def handle_mission_cmd(self, cmds):
         if int(cmds[1]) == 0:
             self.set_default_target()
+            self.platform_dps = 0
+            self.cur_ori = 0
         elif int(cmds[1]) == 1:
             Rtar_list = [ 50, 50, 50]        # target range
             Atar_list = [ 0, 90, 45]              # target azimuth
             Etar_list = [ 0, 30, 45]              # target elevation
-            Vtar_list = [60, -40, 0]               # fix target radial velocity
+            Vtar_list = [0, 0, 0]               # fix target radial velocity
             rcs_list = [2, 5, 10]         # radar cross section   m^2
             self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
             self.DBF_r = Rtar_list[0]
@@ -77,7 +79,7 @@ class RadarHost:
             Rtar_list = [ 50, 50, 50]        # target range
             Atar_list = [ 0, 90, 45]              # target azimuth
             Etar_list = [ 0, 30, 45]              # target elevation
-            Vtar_list = [0, 0, 0]               # fix target radial velocity
+            Vtar_list = [60, -40, 0]               # fix target radial velocity
             rcs_list = [2, 5, 10]         # radar cross section   m^2
             self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
             self.DBF_r = Rtar_list[0]
@@ -373,7 +375,8 @@ def command_handle(radarobj):
             cmd=cmd[:-1]
         else:
             cmd+=c
-
+    if cmd=='':
+        return
     def response(radarobj, cmd):
         max_retries = 10
         retries = 0
