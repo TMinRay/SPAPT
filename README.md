@@ -3,10 +3,6 @@ Signal Processing for Analog Phaser Tomography.
 
 This is the digital singal processing simulation model for the Analog device cn0566 hybrid phaser kit.
 
-![All_Digital](/image/All_Digital.png)
-![Subarray_Fix](/image/Subarray_Fix.png)
-![Subarry_spin](/image/Subarry_spin.png)
-
 ## Project Overview
 Our project aims to pioneer the utilization of cost-effective one-dimensional analog phase array technology in radar tomography. By integrating the cn0566 phaser array onto a rotational platform, aligned axis with center of phaser, we aim to pioneer three-dimensional tomography synthesis through inventive signal processing algorithms.
 
