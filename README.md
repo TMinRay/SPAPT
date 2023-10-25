@@ -1,7 +1,11 @@
 # SPAPT
 Signal Processing for Analog Phaser Tomography.
 
-This is the siganl model as well the digital singal processing for the Analog device cn0566 hybrid phaser kit.
+This is the digital singal processing simulation model for the Analog device cn0566 hybrid phaser kit.
+
+![All_Digital](/image/All_Digital.png)
+![Subarray_Fix](/image/Subarray_Fix.png)
+![Subarry_spin](/image/Subarry_spin.png)
 
 ## Installation
 SPAPT only needs [numpy](https://pypi.org/project/numpy/), [matplotlib](https://pypi.org/project/matplotlib/) and [scipy](https://pypi.org/project/scipy/).
