@@ -83,6 +83,7 @@ class RadarHost:
         if self.capture_fig:
             self.fig.savefig(f'./figshot/{self.figN:0>4d}.png')
             self.figN += 1
+            self.pulse_interval = self.PRF//self.npulse//36*self.figN
 
     def handle_mission_cmd(self, cmds):
         if int(cmds[1]) == 0:
@@ -131,6 +132,17 @@ class RadarHost:
             self.fire_secs = 10
             self.platform_dps = 360+10/self.fire_secs
             self.pulse_interval = 1
+        elif int(cmds[1]) == 5:
+            Rtar_list = [ 30, 60, 60]        # target range
+            Atar_list = [ 45,225,315]              # target azimuth
+            Etar_list = [ 20,15,25]              # target elevation
+            Vtar_list = [ 0,0,0]               # fix target radial velocity
+            rcs_list =  [10,6,10]         # radar cross section   m^2
+            self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
+            self.DBF_r = Rtar_list[1]
+            self.fire_secs = 3
+            self.platform_dps = 360
+            self.pulse_interval = self.PRF//self.npulse//36
         else:
             print("invalid mission command.")
 
@@ -187,6 +199,9 @@ class RadarHost:
     def set_transceiver_npulse(self, inpara):
         self.npulse = inpara
 
+    def set_transceiver_pulse_interval(self, inpara):
+        self.pulse_interval = inpara
+
     def set_transceiver_prf(self, inpara):
         self.PRF = inpara
         self.PRT = 1/self.PRF
@@ -204,6 +219,8 @@ class RadarHost:
             self.set_transceiver_npulse(int(cmds[2]))
         elif cmds[1]=='prf':
             self.set_transceiver_prf(float(cmds[2]))
+        elif cmds[1]=='pi':
+            self.set_transceiver_pulse_interval(float(cmds[2]))
         else:
             print("invalid transceiver command.")
 
@@ -289,24 +306,28 @@ class RadarHost:
             dl = np.sum(element_loct*targetRvector,axis=2)[:,np.newaxis,:]
             total_rx=total_rx+rx[:,:,np.newaxis]*np.exp(-2j*np.pi*dl/self.wavelength)
         self.rx_buf = total_rx
+        self.subarray()
+        if hasattr(self, 'fig'):
+            self.flush_figure()
 
     def beamforming(self,element_loct,rx, bftype ='All Digital'):
-        tx = self.tx
-        crx = rx[:,:tx.shape[0]//2,:]*np.conj(tx[np.newaxis,:tx.shape[0]//2,np.newaxis])
-        Fr = np.arange(-1/2/self.ts,1/2/self.ts,1/self.ts/self.nfft)
-        r = -Fr/(2*self.chirp)*constants.c/2
-        crx = np.fft.fftshift(np.fft.fft(crx,n = self.nfft,axis=1),axes=1)
-        clasper = np.where(np.abs(r-self.DBF_r)==np.min(np.abs(r-self.DBF_r)))[0][0]
-        Eloc = DBF(self.thetaaz,self.thetaele,self.wavelength,self.a0,element_loct,crx[:,clasper:clasper+2,:])
-        Beam = np.mean(np.abs(Eloc)**2,axis=0)
-        self.plot_data = Beam[0,:,:]
-        pt = bftype + f" R = {self.DBF_r:d} m "+r'$\alpha$'+f" = {int(self.cur_ori):d}"+r'$^o$'
-        pt = pt + r'$,\Delta \alpha$'+f" = {int(self.platform_dps*self.npulse*self.PRT*self.pulse_interval):d}"+r'$^o$'
-        if hasattr(self, 'pcm'):
-            self.update_pcm(pt)
-        else:
-            self.init_beam(pt)
-        self.flush_figure()
+        if hasattr(self, 'fig'):
+            tx = self.tx
+            crx = rx[:,:tx.shape[0]//2,:]*np.conj(tx[np.newaxis,:tx.shape[0]//2,np.newaxis])
+            Fr = np.arange(-1/2/self.ts,1/2/self.ts,1/self.ts/self.nfft)
+            r = -Fr/(2*self.chirp)*constants.c/2
+            crx = np.fft.fftshift(np.fft.fft(crx,n = self.nfft,axis=1),axes=1)
+            clasper = np.where(np.abs(r-self.DBF_r)==np.min(np.abs(r-self.DBF_r)))[0][0]
+            Eloc = DBF(self.thetaaz,self.thetaele,self.wavelength,self.a0,element_loct,crx[:,clasper:clasper+2,:])
+            Beam = np.mean(np.abs(Eloc)**2,axis=0)
+            self.plot_data = Beam[0,:,:]
+            pt = bftype + f" R = {self.DBF_r:d} m "+r'$\alpha$'+f" = {int(self.cur_ori):d}"+r'$^o$'
+            pt = pt + r'$,\Delta \alpha$'+f" = {int(self.platform_dps*self.npulse*self.PRT*self.pulse_interval):d}"+r'$^o$'
+            if hasattr(self, 'pcm'):
+                self.update_pcm(pt)
+            else:
+                self.init_beam(pt)
+        # self.flush_figure()
 
     def all_digital(self,dummy=None):
         self.beamforming(self.element_pos,self.rx_buf, bftype ='All Digital')
@@ -319,7 +340,7 @@ class RadarHost:
         self.beamforming(subarray_loc0,subarray_rx, bftype ='Subarray')
 
     def init_beam(self, title = None):
-        pcm = self.ax.pcolormesh(np.squeeze(self.thetax),np.squeeze(self.thetay),np.squeeze(self.plot_data))
+        pcm = self.ax.pcolormesh(np.squeeze(self.thetax),np.squeeze(self.thetay),np.squeeze(self.plot_data),vmax=1.2e6)
         self.ax.set_xlabel(r'$\theta_x$')
         self.ax.set_ylabel(r'$\theta_y$')
         self.ax.set_title(title)
@@ -367,13 +388,13 @@ class RadarHost:
         self.ax = ax
         if cmds[1]=='a':
             self.all_digital()
-            animation = FuncAnimation(fig, self.all_digital, frames=1, interval=self.fire_secs*1e3*0.8)
+            animation = FuncAnimation(fig, self.all_digital, frames=1, interval=self.fire_secs*1e3)
         elif cmds[1]=='s':
             self.subarray()
-            animation = FuncAnimation(fig, self.subarray, frames=1, interval=self.fire_secs*1e3*0.8)
+            animation = FuncAnimation(fig, self.subarray, frames=1, interval=self.fire_secs*1e3*100)
         elif cmds[1]=='r':
             self.range_doppler_map()
-            animation = FuncAnimation(fig, self.range_doppler_map, frames=1, interval=self.fire_secs*1e3*0.8)
+            animation = FuncAnimation(fig, self.range_doppler_map, frames=1, interval=self.fire_secs*1e3)
         else:
             print("invalid beamforming command.")
         plt.show()
