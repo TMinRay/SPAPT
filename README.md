@@ -5,10 +5,7 @@ This is the digital singal processing simulation model for the Analog device cn0
 
 ## Project Overview
 Our project aims to pioneer the utilization of cost-effective one-dimensional analog phase array technology in radar tomography. By integrating the cn0566 phaser array onto a rotational platform, aligned axis with center of phaser, we aim to pioneer three-dimensional tomography synthesis through inventive signal processing algorithms.
-### without SPAPT
-![rdm0](/image/nsar.gif)
-### with SPAPT
-![rdm0](/image/sar.gif)
+![sar](/image/sar.gif)
 ## Project Objects
 
 __Hardware Implementation:__
