@@ -59,6 +59,30 @@ class RadarHost:
         self.set_default_target()
         self.set_default_beams()
         self.exit = False
+        self.capture_fig = False
+        self.figN = 0
+
+    def handle_axes_cmd(self, cmds):
+        if cmds[1]=='r':
+            self.set_axes_DBF_r(int(cmds[2]))
+
+    def set_axes_DBF_r(self, inpara):
+        self.DBF_r = inpara
+
+    def handle_capture_cmd(self, cmds):
+        if self.capture_fig:
+            self.capture_fig = not(self.capture_fig)
+            print('Turn off figure capture.')
+        else:
+            self.capture_fig = not(self.capture_fig)
+            print('Turn on figure capture.')
+            os.makedirs('./figshot/', exist_ok=True)
+            self.figN = 0
+
+    def flush_figure(self):
+        if self.capture_fig:
+            self.fig.savefig(f'./figshot/{self.figN:0>4d}.png')
+            self.figN += 1
 
     def handle_mission_cmd(self, cmds):
         if int(cmds[1]) == 0:
@@ -86,22 +110,35 @@ class RadarHost:
             self.platform_dps = 185
             self.pulse_interval = self.PRF//self.npulse
         elif int(cmds[1]) == 3:
-            Rtar_list = [ 30]        # target range
-            Atar_list = [ 90]              # target azimuth
-            Etar_list = [ 5]              # target elevation
-            Vtar_list = [60]               # fix target radial velocity
-            rcs_list =  [10]         # radar cross section   m^2
+            Rtar_list = [ 30, 60, 60]        # target range
+            Atar_list = [ 45,225,315]              # target azimuth
+            Etar_list = [ 20,15,25]              # target elevation
+            Vtar_list = [ 0,0,0]               # fix target radial velocity
+            rcs_list =  [10,6,10]         # radar cross section   m^2
             self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
-            self.DBF_r = Rtar_list[0]
-            self.npulse = 2048
-            # self.platform_dps = 360*self.PRF/self.npulse
-            self.platform_dps = 0
+            self.DBF_r = Rtar_list[1]
+            self.fire_secs = 10
+            self.platform_dps = 360+10/self.fire_secs
+            self.pulse_interval = self.PRF//self.npulse
+        elif int(cmds[1]) == 4:
+            Rtar_list = [ 30, 60, 60]        # target range
+            Atar_list = [ 45,225,315]              # target azimuth
+            Etar_list = [ 20,15,25]              # target elevation
+            Vtar_list = [ 0,0,0]               # fix target radial velocity
+            rcs_list =  [10,6,10]         # radar cross section   m^2
+            self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
+            self.DBF_r = Rtar_list[1]
+            self.fire_secs = 10
+            self.platform_dps = 360+10/self.fire_secs
+            self.pulse_interval = 1
         else:
             print("invalid mission command.")
 
     def set_default_beams(self):
-        beamx = np.arange(-45,46,1.5) * np.pi/180
-        beamy = np.arange(-45,46,1.5) * np.pi/180
+        # beamx = np.arange(-45,46,1.5) * np.pi/180
+        # beamy = np.arange(-45,46,1.5) * np.pi/180
+        beamx = np.arange(-30,31,1) * np.pi/180
+        beamy = np.arange(-30,31,1) * np.pi/180
         thetax, thetay = np.meshgrid(beamx, beamy)
         self.thetaele = np.arccos(np.sqrt(1-np.sin(thetax)**2-np.sin(thetay)**2))
         self.thetaaz = np.arctan2(np.sin(thetax),np.sin(thetay))
@@ -253,7 +290,6 @@ class RadarHost:
             total_rx=total_rx+rx[:,:,np.newaxis]*np.exp(-2j*np.pi*dl/self.wavelength)
         self.rx_buf = total_rx
 
-
     def beamforming(self,element_loct,rx, bftype ='All Digital'):
         tx = self.tx
         crx = rx[:,:tx.shape[0]//2,:]*np.conj(tx[np.newaxis,:tx.shape[0]//2,np.newaxis])
@@ -270,6 +306,7 @@ class RadarHost:
             self.update_pcm(pt)
         else:
             self.init_beam(pt)
+        self.flush_figure()
 
     def all_digital(self,dummy=None):
         self.beamforming(self.element_pos,self.rx_buf, bftype ='All Digital')
@@ -312,6 +349,7 @@ class RadarHost:
             self.update_pcm(pt)
         else:
             self.init_rdm(pt)
+        self.flush_figure()
 
     def init_rdm(self,title):
         pcm = self.ax.pcolormesh(self.Vaxes,self.raxes,self.plot_data)
@@ -329,13 +367,13 @@ class RadarHost:
         self.ax = ax
         if cmds[1]=='a':
             self.all_digital()
-            animation = FuncAnimation(fig, self.all_digital, frames=1, interval=self.fire_secs*1e3)
+            animation = FuncAnimation(fig, self.all_digital, frames=1, interval=self.fire_secs*1e3*0.8)
         elif cmds[1]=='s':
             self.subarray()
-            animation = FuncAnimation(fig, self.subarray, frames=1, interval=self.fire_secs*1e3)
+            animation = FuncAnimation(fig, self.subarray, frames=1, interval=self.fire_secs*1e3*0.8)
         elif cmds[1]=='r':
             self.range_doppler_map()
-            animation = FuncAnimation(fig, self.range_doppler_map, frames=1, interval=self.fire_secs*1e3)
+            animation = FuncAnimation(fig, self.range_doppler_map, frames=1, interval=self.fire_secs*1e3*0.8)
         else:
             print("invalid beamforming command.")
         plt.show()
@@ -386,6 +424,8 @@ def command_handle(radarobj):
             if not radarobj.lock.locked():
                 if cmds[0]=='p':
                     radarobj.handle_platform_cmd(cmds)
+                elif cmds[0]=='a':
+                    radarobj.handle_axes_cmd(cmds)
                 elif cmds[0]=='d':
                     radarobj.handle_display_cmd(cmds)
                 elif cmds[0]=='t':
@@ -396,6 +436,8 @@ def command_handle(radarobj):
                     radarobj.handle_mission_cmd(cmds)
                 elif cmds[0]=='o':
                     radarobj.handle_object_cmd(cmds)
+                elif cmds[0]=='f':
+                    radarobj.handle_capture_cmd(cmds)
                 elif cmds[0]=='q':
                     radarobj.exit = True
                     exit()
