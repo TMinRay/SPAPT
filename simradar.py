@@ -4,7 +4,9 @@ import numpy as np
 from scipy import constants 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import os
+import queue
 
 def fftconvolve(ax,ay,axis=-1):
     nex=ax.shape[axis]+ay.shape[axis]-1
@@ -32,11 +34,11 @@ def element_rotate(element_pos,orientation):
     return out_pos
 
 class RadarHost:
-    def __init__(self):
-        self.state = "initial"
+    def __init__(self,queue_fig):
+        # self.state = "initial"
         self.lock = threading.Lock()
         self.on = True
-
+        self.queue_fig = queue_fig
         self.TS = 290        # noise temperature K
         self.pulse_interval = 1 # intergal pulses inveral (trick for saving resources in simulation)
         self.npulse = 512    # number of pulses in sequence
@@ -61,6 +63,9 @@ class RadarHost:
         self.exit = False
         self.capture_fig = False
         self.figN = 0
+        self.ptitle = ''
+        self.initdraw = True
+        self.algorithm = self.subarray
 
     def handle_axes_cmd(self, cmds):
         if cmds[1]=='r':
@@ -71,18 +76,35 @@ class RadarHost:
 
     def handle_capture_cmd(self, cmds):
         if self.capture_fig:
-            self.capture_fig = not(self.capture_fig)
-            print('Turn off figure capture.')
+            with self.lock:
+                self.capture_fig = False
+                print('Turn off figure capture.')
+                plt.close(self.fig)
+                del self.fig
+                del self.pcm
         else:
-            self.capture_fig = not(self.capture_fig)
-            print('Turn on figure capture.')
-            os.makedirs('./figshot/', exist_ok=True)
-            self.figN = 0
+            with self.lock:
+                print('Turn on figure capture.')
+                self.init_fig()
+                self.figN = 0
+
+    def init_fig(self):
+        fig, ax = plt.subplots()
+        self.fig = fig
+        self.ax = ax
+        divider = make_axes_locatable(self.ax)
+        ax_cb = divider.new_horizontal(size="5%", pad=0.1)
+        self.cax = self.fig.add_axes(ax_cb)
+        self.capture_fig = True
+        os.makedirs('./figshot/', exist_ok=True)
+        self.initdraw = True
 
     def flush_figure(self):
         if self.capture_fig:
-            self.fig.savefig(f'./figshot/{self.figN:0>4d}.png')
+            self.queue_fig.put((self.fig,f'./figshot/{self.figN:0>4d}.png'))
+            # self.fig.savefig(f'./figshot/{self.figN:0>4d}.png')
             self.figN += 1
+            # self.pulse_interval = self.PRF//self.npulse//36*self.figN
 
     def handle_mission_cmd(self, cmds):
         if int(cmds[1]) == 0:
@@ -131,14 +153,25 @@ class RadarHost:
             self.fire_secs = 10
             self.platform_dps = 360+10/self.fire_secs
             self.pulse_interval = 1
+        elif int(cmds[1]) == 5:
+            Rtar_list = [ 30, 60, 60]        # target range
+            Atar_list = [ 45,225,315]              # target azimuth
+            Etar_list = [ 20,15,25]              # target elevation
+            Vtar_list = [ 0,0,0]               # fix target radial velocity
+            rcs_list =  [10,6,10]         # radar cross section   m^2
+            self.target_para = [Rtar_list, Vtar_list, rcs_list, Atar_list, Etar_list]
+            self.DBF_r = Rtar_list[1]
+            self.fire_secs = 3
+            self.platform_dps = 360
+            self.pulse_interval = self.PRF//self.npulse//36
         else:
             print("invalid mission command.")
 
     def set_default_beams(self):
-        # beamx = np.arange(-45,46,1.5) * np.pi/180
-        # beamy = np.arange(-45,46,1.5) * np.pi/180
-        beamx = np.arange(-30,31,1) * np.pi/180
-        beamy = np.arange(-30,31,1) * np.pi/180
+        beamx = np.arange(-45,46,1.5) * np.pi/180
+        beamy = np.arange(-45,46,1.5) * np.pi/180
+        # beamx = np.arange(-30,31,1) * np.pi/180
+        # beamy = np.arange(-30,31,1) * np.pi/180
         thetax, thetay = np.meshgrid(beamx, beamy)
         self.thetaele = np.arccos(np.sqrt(1-np.sin(thetax)**2-np.sin(thetay)**2))
         self.thetaaz = np.arctan2(np.sin(thetax),np.sin(thetay))
@@ -187,6 +220,9 @@ class RadarHost:
     def set_transceiver_npulse(self, inpara):
         self.npulse = inpara
 
+    def set_transceiver_pulse_interval(self, inpara):
+        self.pulse_interval = inpara
+
     def set_transceiver_prf(self, inpara):
         self.PRF = inpara
         self.PRT = 1/self.PRF
@@ -204,6 +240,8 @@ class RadarHost:
             self.set_transceiver_npulse(int(cmds[2]))
         elif cmds[1]=='prf':
             self.set_transceiver_prf(float(cmds[2]))
+        elif cmds[1]=='pi':
+            self.set_transceiver_pulse_interval(float(cmds[2]))
         else:
             print("invalid transceiver command.")
 
@@ -289,8 +327,13 @@ class RadarHost:
             dl = np.sum(element_loct*targetRvector,axis=2)[:,np.newaxis,:]
             total_rx=total_rx+rx[:,:,np.newaxis]*np.exp(-2j*np.pi*dl/self.wavelength)
         self.rx_buf = total_rx
+        if self.capture_fig:
+            self.algorithm()
+            self.flush_figure()
+
 
     def beamforming(self,element_loct,rx, bftype ='All Digital'):
+        # if hasattr(self, 'fig'):
         tx = self.tx
         crx = rx[:,:tx.shape[0]//2,:]*np.conj(tx[np.newaxis,:tx.shape[0]//2,np.newaxis])
         Fr = np.arange(-1/2/self.ts,1/2/self.ts,1/self.ts/self.nfft)
@@ -301,37 +344,44 @@ class RadarHost:
         Beam = np.mean(np.abs(Eloc)**2,axis=0)
         self.plot_data = Beam[0,:,:]
         pt = bftype + f" R = {self.DBF_r:d} m "+r'$\alpha$'+f" = {int(self.cur_ori):d}"+r'$^o$'
-        pt = pt + r'$,\Delta \alpha$'+f" = {int(self.platform_dps*self.npulse*self.PRT*self.pulse_interval):d}"+r'$^o$'
-        if hasattr(self, 'pcm'):
-            self.update_pcm(pt)
+        self.ptitle = pt + r'$,\Delta \alpha$'+f" = {int(self.platform_dps*self.npulse*self.PRT*self.pulse_interval):d}"+r'$^o$'
+        if self.initdraw:
+            self.xlabel = r'$\theta_x$'
+            self.ylabel = r'$\theta_y$'
+            self.xx = np.squeeze(self.thetax)
+            self.yy = np.squeeze(self.thetay)
+            self.pcm = self.init_pcm(self.fig, self.ax, self.cax)
         else:
-            self.init_beam(pt)
-        self.flush_figure()
+            self.update_pcm()
 
-    def all_digital(self,dummy=None):
+        # self.flush_figure()
+
+    def all_digital(self):
         self.beamforming(self.element_pos,self.rx_buf, bftype ='All Digital')
 
-    def subarray(self,dummy=None):
+    def subarray(self):
         element_loct = self.element_pos
         rx = self.rx_buf
         subarray_rx = np.sum(rx.reshape((rx.shape[0],rx.shape[1],4,8)), axis=2)
         subarray_loc0 = np.mean(element_loct.reshape((element_loct.shape[0],4,8,3)), axis=1)
         self.beamforming(subarray_loc0,subarray_rx, bftype ='Subarray')
 
-    def init_beam(self, title = None):
-        pcm = self.ax.pcolormesh(np.squeeze(self.thetax),np.squeeze(self.thetay),np.squeeze(self.plot_data))
-        self.ax.set_xlabel(r'$\theta_x$')
-        self.ax.set_ylabel(r'$\theta_y$')
-        self.ax.set_title(title)
-        plt.colorbar(pcm)
-        self.pcm = pcm
-
-    def update_pcm(self,title = None):
+    def update_pcm(self):
         self.pcm.set_array(self.plot_data.ravel())
-        if title is not None:
-            self.ax.set_title(title)
+        self.ax.set_title(self.ptitle)
 
-    def range_doppler_map(self,dummy=None):
+    # def update_dpcm(self):
+    #     self.dpcm.set_array(self.plot_data.ravel())
+    #     self.dpcm.axes.set_title(self.ptitle)
+    def update_dpcm(self,dummy=None):
+        self.update_pcm()
+        # self.pcm.set_array(self.plot_data.ravel())
+        # self.ax.set_title(self.ptitle)
+        if not self.queue_fig.empty():
+            fig, filename = self.queue_fig.get()
+            output_plot(fig, filename)
+
+    def range_doppler_map(self):
         rx = self.rx_buf
         tx = self.tx
         Fr = np.arange(-1/2/self.ts,1/2/self.ts,1/self.ts/self.nfft)
@@ -344,41 +394,80 @@ class RadarHost:
         self.Vaxes = -Fv/2*self.wavelength
         self.raxes = r
         self.plot_data = np.transpose(rdm)
-        pt = f" Phaser orientation = {int(self.cur_ori):d}"+r'$^o$'
-        if hasattr(self, 'pcm'):
-            self.update_pcm(pt)
+        self.ptitle = f" Phaser orientation = {int(self.cur_ori):d}"+r'$^o$'
+        if self.initdraw:
+            self.xlabel = 'Doppler velocity (m/s)'
+            self.ylabel = 'Range (m)'
+            self.xx = self.Vaxes
+            self.yy = self.raxes
+            self.pcm = self.init_pcm(self.fig, self.ax, self.cax)
+            self.ax.set_xlim(-100,100)
+            self.ax.set_ylim(0,200)
         else:
-            self.init_rdm(pt)
-        self.flush_figure()
+            self.update_pcm()
+        # self.flush_figure()
 
-    def init_rdm(self,title):
-        pcm = self.ax.pcolormesh(self.Vaxes,self.raxes,self.plot_data)
-        self.ax.set_xlim(-100,100)
-        self.ax.set_ylim(0,200)
-        self.ax.set_xlabel('Doppler velocity (m/s)')
-        self.ax.set_ylabel('Range (m)')
-        plt.colorbar(pcm)
-        self.pcm = pcm
-        self.ax.set_title(title)
+    def init_pcm(self, fig, ax, cax):
+        pcm = ax.pcolormesh(self.xx, self.yy, self.plot_data)
+        ax.set_xlabel(self.xlabel)
+        ax.set_ylabel(self.ylabel)
+        ax.set_title(self.ptitle)
+        fig.colorbar(pcm, cax = cax)
+        self.initdraw = False
+        return pcm
+
+    # def init_rdm(self,title):
+    #     pcm = self.ax.pcolormesh(self.Vaxes,self.raxes,self.plot_data)
+    #     self.ax.set_xlim(-100,100)
+    #     self.ax.set_ylim(0,200)
+    #     self.ax.set_xlabel('Doppler velocity (m/s)')
+    #     self.ax.set_ylabel('Range (m)')
+    #     self.fig.colorbar(pcm, ax=self.ax)
+    #     self.pcm = pcm
+    #     self.ax.set_title(title)
+    #     self.initdraw = False
 
     def handle_display_cmd(self,cmds):
-        fig, ax = plt.subplots()
-        self.fig = fig
-        self.ax = ax
+
         if cmds[1]=='a':
-            self.all_digital()
-            animation = FuncAnimation(fig, self.all_digital, frames=1, interval=self.fire_secs*1e3*0.8)
+            self.algorithm = self.all_digital
+            # self.all_digital()
+            # animation = FuncAnimation(fig, self.all_digital, frames=1, interval=self.fire_secs*1e3)
         elif cmds[1]=='s':
-            self.subarray()
-            animation = FuncAnimation(fig, self.subarray, frames=1, interval=self.fire_secs*1e3*0.8)
+            self.algorithm = self.subarray
+            # self.subarray()
+            # animation = FuncAnimation(fig, self.subarray, frames=1, interval=self.fire_secs*1e3)
         elif cmds[1]=='r':
-            self.range_doppler_map()
-            animation = FuncAnimation(fig, self.range_doppler_map, frames=1, interval=self.fire_secs*1e3*0.8)
+            self.algorithm = self.range_doppler_map
+            # self.range_doppler_map()
+            # animation = FuncAnimation(fig, self.range_doppler_map, frames=1, interval=self.fire_secs*1e3)
         else:
             print("invalid beamforming command.")
+        if self.initdraw:
+            self.init_fig()
+        else:
+            with self.lock:
+                plt.close(self.fig)
+                del self.fig
+                del self.pcm
+                self.init_fig()
+        self.initdraw = True
+        self.algorithm()
+        # fig = self.fig
+        # dfig, dax = plt.subplots()
+        # # self.fig = fig
+        # # self.ax = ax
+        # divider = make_axes_locatable(dax)
+        # ax_cb = divider.new_horizontal(size="5%", pad=0.1)
+        # dcax = dfig.add_axes(ax_cb)
+        # self.dpcm = self.init_pcm(dfig, dax, dcax)
+        animation = FuncAnimation(self.fig, self.update_dpcm, frames=1, interval=self.fire_secs*1e3)
         plt.show()
-        plt.close(fig)
-        del self.pcm
+        with self.lock:
+            plt.close(self.fig)
+            del self.fig
+            del self.pcm
+            self.init_fig()
 
     def run(self):
         while not (self.exit):
@@ -389,7 +478,7 @@ class RadarHost:
                     self.fire_pulse()
                     elapsed_time = time.time() - tic
                     print(f"Fire {self.npulse:d} pulses CPU Elapsed Time: {elapsed_time:.2f} seconds")
-            time.sleep(self.fire_secs)
+            time.sleep(3)
 
     def wait(self):
         with self.lock:
@@ -405,18 +494,29 @@ class RadarHost:
                 print("pause",ik)
                 time.sleep(1)
 
-def command_handle(radarobj):
-    cmdbuf = input('Command Center await.\n')
-    cmd = ''
-    for c in cmdbuf:
-        if c=='\b':
-            cmd=cmd[:-1]
-        else:
-            cmd+=c
+def output_plot(fig,figname):
+    fig.savefig(figname)
+
+def command_host(qc):
+    while 1:
+        cmdbuf = input('Command Center await.\n')
+        cmd = ''
+        for c in cmdbuf:
+            if c=='\b':
+                cmd=cmd[:-1]
+            else:
+                cmd+=c
+        qc.put(cmd)
+        cmd = ' '.join(cmd.split())
+        cmds = cmd.split()
+        if cmds[0]=='q':
+            break
+
+def command_handle(radarobj, cmd):
     if cmd=='':
         return
     def response(radarobj, cmd):
-        max_retries = 10
+        max_retries = 15
         retries = 0
         cmd = ' '.join(cmd.split())
         cmds = cmd.split()
@@ -454,6 +554,8 @@ def command_handle(radarobj):
                 print("Thread is locked. Retrying...")
                 retries += 1
                 time.sleep(0.2)  # Optional: Add a delay between retries
+                if retries == max_retries:
+                    print("Time out. Command skipped. ")
 
     if cmd[0]=='l':
         radarobj.lock.acquire()
@@ -463,12 +565,21 @@ def command_handle(radarobj):
         response(radarobj,cmd)
 
 if __name__ == "__main__":
-    radarcore = RadarHost()
-
+    queue_fig = queue.Queue()
+    queue_cmd = queue.Queue()
+    radarcore = RadarHost(queue_fig)
     thread = threading.Thread(target=radarcore.run)
+    input_host = threading.Thread(target=command_host, args=(queue_cmd,))
     thread.start()
+    input_host.start()
 
     while 1:
-        command_handle(radarcore)
+        if not queue_cmd.empty():
+            cmd = queue_cmd.get()
+            command_handle(radarcore,cmd)
+        if not queue_fig.empty():
+            fig, filename = queue_fig.get()
+            output_plot(fig, filename)
+        time.sleep(0.2)
 
     thread.join()
