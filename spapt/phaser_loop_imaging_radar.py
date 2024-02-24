@@ -52,6 +52,12 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 from adi import ad9361
 from adi.cn0566 import CN0566
+
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import *
+from pyqtgraph.Qt import QtCore, QtGui
+import pyqtgraph as pg
+import sys
 # from phaser_functions import load_hb100_cal, spec_est
 # from scipy import signal
 
@@ -258,14 +264,15 @@ my_sdr.tx([iq * 0.5, iq])  # only send data to the 2nd channel (that's all we ne
 c = 3e8
 default_rf_bw = 500e6
 N_frame = fft_size
-freq = np.linspace(-fs / 2, fs / 2, int(N_frame))
+freq = np.arange(0,fs,fs/int(N_frame))
+# freq = np.linspace(-fs / 2, fs / 2, int(N_frame))
+
 slope = BW / ramp_time_s
 dist = (freq - signal_freq) * c / (4 * slope)
 # dist = freq * c / (4 * slope)
 
 xdata = freq
 # plot_dist = False
-
 
 
 # # Now set the phaser's PLL. This is the ADF4159, and we'll set it to the HB100 frequency
@@ -284,67 +291,343 @@ xdata = freq
 # def gendata():
 #     return [np.random.random(1024),np.random.random(1024)]
 
-fs = my_sdr.sample_rate
-ref = 2 ** 12
-data = my_sdr.rx()
+# fs = my_sdr.sample_rate
+# ref = 2 ** 12
+# data = my_sdr.rx()
 # freqs = np.arange(-fs/2, fs/2, fs/data[0].size)
 # freqs /= 1e6  # Scale Hz -> MHz
 
-az = np.arange(-60, 61, 5)
-fps = 2
-t = np.arange(5*fps)/fps
+# az = np.arange(-60, 61, 5)
+# fps = 2
+# t = np.arange(5*fps)/fps
 
-def update_img(self):
-    # self.img[1:,:] = self.img[:-1,:]
-    # self.pf[1:,:] = self.pf[:-1,:]
-    fxdata = np.zeros((az.size, freq.size),dtype=np.complex_)
+# def update_img(self):
+#     # self.img[1:,:] = self.img[:-1,:]
+#     # self.pf[1:,:] = self.pf[:-1,:]
+#     fxdata = np.zeros((az.size, freq.size),dtype=np.complex_)
+#     for avgpulse in range(1):
+#         for ia, steer in enumerate(az):
+#             self.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
+#             data = my_sdr.rx()
+#             data_sum = data[0] + data[1]
+#             N = data[0].size
+#             fxdata[ia,:] += 1 / N * np.fft.fft(data_sum)
+#     ampl = np.fft.fftshift(np.abs(fxdata))
+#     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
+#     self.img=ampl
+#         # ampl_buf.append(ampl)
+#         # peak_index = np.argmax(ampl)
+#         # self.img[0,ia]=ampl[peak_index]
+#         # self.pf[0,ia]=freqs[peak_index]
+
+# my_phaser.img = np.zeros((az.size, freq.size))
+# # my_phaser.pf = np.zeros((t.size, freq.size))
+# my_phaser.update_img = update_img
+
+# # # data_sum = data_sum *window
+    
+# # peak_index = np.argmax(ampl)  # Locate the peak frequency's index
+# # peak_freq = freqs[peak_index]  # And the frequency itself.
+# # # print("Peak frequency found at ", freqs[peak_index], " MHz.")
+# # # Now plot the data
+# # fig, ax = plt.subplots(2, 1)
+# my_phaser.update_img(my_phaser)
+# # Create the initial pcolormesh plot
+# fig, ax = plt.subplots()
+# pcm = ax.pcolormesh(dist, az, my_phaser.img, cmap='viridis', shading='auto')
+# cbar = plt.colorbar(pcm, ax=ax)
+
+# ax.set_title("signal power")
+# ax.set_xlabel("Range")
+# # ax.set_xlim(-2,5)
+# ax.set_ylabel("azimuth")
+
+# fig.tight_layout()
+
+# def update_plot(dummy=None):
+#     my_phaser.update_img(my_phaser)
+#     pcm.set_array(my_phaser.img)
+
+
+
+# animation = FuncAnimation(fig, update_plot, interval=1e3/fps)
+# plt.show()
+
+
+
+font = QtGui.QFont()
+font.setPointSize(16)
+
+def get_img_trans(axx,axy):
+    dx = (axx[-1]-axx[0])/axx.size
+    dy = (axy[-1]-axy[0])/axy.size
+    return axx[0], axy[0], dx, dy
+
+class Window(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Interactive FFT")
+        self.setGeometry(100, 100, 800, 1200)
+        self.num_rows = 12
+        self.fft_size = fft_size
+        self.freq = np.arange(0,fs,fs/int(N_frame))
+        self.az = np.arange(-60, 61, 20)
+        self.plot_dist = False
+
+        self.UiComponents()
+        # showing all the widgets
+        self.show()
+
+    # method for components
+    def UiComponents(self):
+        widget = QWidget()
+
+        # global layout
+        layout = QGridLayout()
+
+        # Control Panel
+        control_label = QLabel("ADALM-PHASER Simple FMCW Radar")
+        font = control_label.font()
+        font.setPointSize(20)
+        control_label.setFont(font)
+        control_label.setAlignment(Qt.AlignHCenter)  # | Qt.AlignVCenter)
+        layout.addWidget(control_label, 0, 0, 1, 2)
+
+        # Check boxes
+        self.x_axis_check = QCheckBox("Toggle Range/Frequency x-axis")
+        font = self.x_axis_check.font()
+        font.setPointSize(15)
+        self.x_axis_check.setFont(font)
+
+        self.x_axis_check.stateChanged.connect(self.change_x_axis)
+        layout.addWidget(self.x_axis_check, 2, 0)
+
+        # Range resolution
+        # Changes with the RF BW slider
+        default_rf_bw = 500e6
+        c = 3e8
+        self.range_res_label = QLabel(
+            "B<sub>RF</sub>: %0.2f MHz - R<sub>res</sub>: %0.2f m"
+            % (default_rf_bw / 1e6, c / (2 * default_rf_bw))
+        )
+        font = self.range_res_label.font()
+        font.setPointSize(15)
+        self.range_res_label.setFont(font)
+        self.range_res_label.setAlignment(Qt.AlignRight)
+        self.range_res_label.setMinimumWidth(300)
+        layout.addWidget(self.range_res_label, 4, 1)
+
+        # RF bandwidth slider
+        self.bw_slider = QSlider(Qt.Horizontal)
+        self.bw_slider.setMinimum(100)
+        self.bw_slider.setMaximum(500)
+        self.bw_slider.setValue(int(default_rf_bw / 1e6))
+        self.bw_slider.setTickInterval(50)
+        self.bw_slider.setTickPosition(QSlider.TicksBelow)
+        self.bw_slider.valueChanged.connect(self.get_range_res)
+        layout.addWidget(self.bw_slider, 4, 0)
+
+        self.set_bw = QPushButton("Set RF Bandwidth")
+        self.set_bw.pressed.connect(self.set_range_res)
+        layout.addWidget(self.set_bw, 5, 0, 1, 2)
+
+        # FFT plot
+        self.fft_plot = pg.plot()
+        self.fft_plot.setMinimumWidth(1200)
+        self.fft_curve = self.fft_plot.plot(self.freq, pen="y", width=6)
+        title_style = {"size": "20pt"}
+        label_style = {"color": "#FFF", "font-size": "14pt"}
+        self.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
+        self.fft_plot.setLabel("left", text="Magnitude", units="dB", **label_style)
+        self.fft_plot.setTitle("Received Signal - Frequency Spectrum", **title_style)
+        layout.addWidget(self.fft_plot, 0, 2, self.num_rows, 1)
+        self.fft_plot.setYRange(-80, -40)
+        # self.fft_plot.setXRange(100e3, 200e3)
+
+        # Waterfall plot
+        # self.waterfall = pg.PlotWidget()
+        self.gr_wid = pg.GraphicsLayoutWidget()
+        self.waterfall = self.gr_wid.addPlot()
+        self.imageitem = pg.ImageItem()
+        self.waterfall.addItem(self.imageitem)
+
+        bar = pg.ColorBarItem(
+            values = (-80, -40),
+            colorMap='CET-L4',
+            label='horizontal color bar',
+            limits = (None, None),
+            rounding=0.1,
+            orientation = 'h',
+            pen='#8888FF', hoverPen='#EEEEFF', hoverBrush='#EEEEFF80'
+        )
+        bar.setImageItem( self.imageitem, insert_in=self.waterfall )
+        self.plot_xaxis = self.freq
+        self.set_Quads()
+            # zoom_freq = 40e3
+        self.waterfall.setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]))
+        self.waterfall.setTitle("Waterfall Spectrum", **title_style)
+        self.waterfall.setLabel("left", "Frequency", units="Hz", **label_style)
+        self.waterfall.setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
+        self.waterfall.getAxis("bottom").setTickFont(font)
+        self.waterfall.getAxis("left").setTickFont(font)
+        # self.waterfall.setTickFont
+
+        layout.addWidget(self.gr_wid, 0 + self.num_rows + 1, 2, self.num_rows, 1)
+        # self.img_array = np.zeros((num_slices, fft_size))
+
+        widget.setLayout(layout)
+        # setting this widget as central widget of the main window
+        self.setCentralWidget(widget)
+
+    def set_Quads(self):
+        tr = QtGui.QTransform()
+        trans_para = get_img_trans(self.az,self.plot_xaxis)
+        tr.translate(trans_para[0], trans_para[1])
+        tr.scale(trans_para[2], trans_para[3])
+        self.imageitem.setTransform(tr)
+
+    def get_range_res(self):
+        """ Updates the slider bar label with RF bandwidth and range resolution
+        Returns:
+            None
+        """
+        bw = self.bw_slider.value() * 1e6
+        range_res = c / (2 * bw)
+        self.range_res_label.setText(
+            "B<sub>RF</sub>: %0.2f MHz - R<sub>res</sub>: %0.2f m"
+            % (bw / 1e6, c / (2 * bw))
+        )
+
+    def get_water_levels(self):
+        """ Updates the waterfall intensity levels
+        Returns:
+            None
+        """
+        if self.low_slider.value() > self.high_slider.value():
+            self.low_slider.setValue(self.high_slider.value())
+        self.low_label.setText("LOW LEVEL: %0.0f" % (self.low_slider.value()))
+        self.high_label.setText("HIGH LEVEL: %0.0f" % (self.high_slider.value()))
+
+    def get_steer_angle(self):
+        """ Updates the steering angle readout
+        Returns:
+            None
+        """
+        self.steer_label.setText("%0.0f DEG" % (self.steer_slider.value()))
+        phase_delta = (
+            2
+            * 3.14159
+            * 10.25e9
+            * 0.014
+            * np.sin(np.radians(self.steer_slider.value()))
+            / (3e8)
+        )
+        my_phaser.set_beam_phase_diff(np.degrees(phase_delta))
+
+    def set_range_res(self):
+        """ Sets the RF bandwidth
+        Returns:
+            None
+        """
+        global slope
+        bw = self.bw_slider.value() * 1e6
+        slope = bw / ramp_time_s
+        dist = (freq - signal_freq) * c / (4 * slope)
+        print("New slope: %0.2fMHz/s" % (slope / 1e6))
+        if self.x_axis_check.isChecked() == True:
+            print("Range axis")
+            self.plot_dist = True
+            range_x = (100e3) * c / (4 * slope)
+            self.fft_plot.setXRange(0, range_x)
+        else:
+            print("Frequency axis")
+            self.plot_dist = False
+            self.fft_plot.setXRange(100e3, 200e3)
+        my_phaser.freq_dev_range = int(bw / 4)  # frequency deviation range in Hz
+        my_phaser.enable = 0
+
+    def change_x_axis(self, state):
+        """ Toggles between showing frequency and range for the x-axis
+        Args:
+            state (QtCore.Qt.Checked) : State of check box
+        Returns:
+            None
+        """
+        global slope
+        # plot_state = win.fft_plot.getViewBox().state
+        # if state == QtCore.Qt.Checked:
+        #     print("Range axis")
+        #     plot_dist = True
+        #     range_x = (100e3) * c / (4 * slope)
+        #     self.fft_plot.setXRange(0, range_x)
+        # else:
+        #     print("Frequency axis")
+        #     plot_dist = False
+        #     self.fft_plot.setXRange(100e3, 200e3)
+        bw = self.bw_slider.value() * 1e6
+        slope = bw / ramp_time_s
+        dist = (self.freq - signal_freq) * c / (4 * slope)
+        print("New slope: %0.2fMHz/s" % (slope / 1e6))
+        if self.x_axis_check.isChecked() == True:
+            print("Range axis")
+            self.plot_dist = True
+            range_x = np.max(self.freq) * c / (4 * slope)
+            self.plot_xaxis = dist
+            # self.fft_plot.setXRange(0, range_x/2)
+            # self.waterfall.setRange(yRange=(0, range_x/2))
+            self.fft_plot.setXRange(0, 30)
+            self.waterfall.setRange(yRange=(0, 30))
+            self.waterfall.setLabel("left", "Range", units="m")
+            self.fft_plot.setLabel("bottom", text="Range", units="m")
+            self.set_Quads()
+        else:
+            print("Frequency axis")
+            self.plot_dist = False
+            self.plot_xaxis = self.freq
+            self.fft_plot.setXRange(signal_freq, np.max(self.freq)/2)
+            self.waterfall.setRange(yRange=(signal_freq, np.max(self.freq)/2))
+            self.waterfall.setLabel("left", "Frequency", units="Hz")
+            self.fft_plot.setLabel("bottom", text="Frequency", units="Hz")
+            self.set_Quads()
+
+
+# create pyqt5 app
+App = QApplication(sys.argv)
+
+# create the instance of our Window
+win = Window()
+index = 0
+
+ref = 2 ** 12
+
+def update():
+
+    frdata = np.zeros((win.freq.size),dtype=np.complex_)
+    fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
     for avgpulse in range(1):
-        for ia, steer in enumerate(az):
-            self.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
+        for ia, steer in enumerate(win.az):
+            my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
             data = my_sdr.rx()
             data_sum = data[0] + data[1]
             N = data[0].size
             fxdata[ia,:] += 1 / N * np.fft.fft(data_sum)
-    ampl = np.fft.fftshift(np.abs(fxdata))
+            frdata += 1 / N * np.fft.fft(data_sum)
+    frdata = frdata/win.az.size
+    ampl = np.abs(fxdata)
     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
-    self.img=ampl
-        # ampl_buf.append(ampl)
-        # peak_index = np.argmax(ampl)
-        # self.img[0,ia]=ampl[peak_index]
-        # self.pf[0,ia]=freqs[peak_index]
+    win.img = ampl
+    win.imageitem.setImage(win.img, autoLevels=False)
+    if win.plot_dist:
+        win.fft_curve.setData(dist, 20 * np.log10(np.abs(frdata) / ref + 10 ** -20))
+    else:
+        win.fft_curve.setData(win.freq, 20 * np.log10(np.abs(frdata) / ref + 10 ** -20))
 
-my_phaser.img = np.zeros((az.size, freq.size))
-# my_phaser.pf = np.zeros((t.size, freq.size))
-my_phaser.update_img = update_img
+timer = QtCore.QTimer()
+timer.timeout.connect(update)
+timer.start(0)
 
-# # data_sum = data_sum *window
-    
-# peak_index = np.argmax(ampl)  # Locate the peak frequency's index
-# peak_freq = freqs[peak_index]  # And the frequency itself.
-# # print("Peak frequency found at ", freqs[peak_index], " MHz.")
-# # Now plot the data
-# fig, ax = plt.subplots(2, 1)
-my_phaser.update_img(my_phaser)
-# Create the initial pcolormesh plot
-fig, ax = plt.subplots()
-pcm = ax.pcolormesh(dist, az, my_phaser.img, cmap='viridis', shading='auto')
-cbar = plt.colorbar(pcm, ax=ax)
-
-ax.set_title("signal power")
-ax.set_xlabel("Range")
-# ax.set_xlim(-2,5)
-ax.set_ylabel("azimuth")
-
-fig.tight_layout()
-
-def update_plot(dummy=None):
-    my_phaser.update_img(my_phaser)
-    pcm.set_array(my_phaser.img)
-
-
-
-animation = FuncAnimation(fig, update_plot, interval=1e3/fps)
-plt.show()
+# start the app
+sys.exit(App.exec())
 
 
 
