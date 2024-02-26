@@ -107,31 +107,31 @@ my_phaser.load_phase_cal("phase_cal_val.pkl")
 # Set all antenna elements to half scale - a typical HB100 will have plenty
 # of signal power.
 
-gain_list = [64] * 8  # (64 is about half scale)
-# gain_list = [8, 34, 84, 127, 127, 84, 34, 8]  # Blackman taper
+# gain_list = [64] * 8  # (64 is about half scale)
+gain_list = [8, 34, 84, 127, 127, 84, 34, 8]  # Blackman taper
 for i in range(0, len(gain_list)):
     my_phaser.set_chan_gain(i, gain_list[i], apply_cal=False)
 
 # Aim the beam at boresight (zero degrees). Place HB100 right in front of array.
 my_phaser.set_beam_phase_diff(0.0)
 
+#########
+# #  Configure SDR parameters. Start with the more involved settings, don't
+# # pay too much attention to these. They are covered in much more detail in
+# # Software Defined Radio for Engineers.
 
-#  Configure SDR parameters. Start with the more involved settings, don't
-# pay too much attention to these. They are covered in much more detail in
-# Software Defined Radio for Engineers.
-
-my_sdr._ctrl.debug_attrs["adi,frequency-division-duplex-mode-enable"].value = "1"
-my_sdr._ctrl.debug_attrs[
-    "adi,ensm-enable-txnrx-control-enable"
-].value = "0"  # Disable pin control so spi can move the states
-my_sdr._ctrl.debug_attrs["initialize"].value = "1"
-
+# my_sdr._ctrl.debug_attrs["adi,frequency-division-duplex-mode-enable"].value = "1"
+# my_sdr._ctrl.debug_attrs[
+#     "adi,ensm-enable-txnrx-control-enable"
+# ].value = "0"  # Disable pin control so spi can move the states
+# my_sdr._ctrl.debug_attrs["initialize"].value = "1"
+#########
 sample_rate = 0.6e6
 center_freq = 2.2e9
 signal_freq = 100e3
 num_slices = 200
-# fft_size = 1024 * 16
-fft_size = 1024*8
+fft_size = 1024 * 16
+# fft_size = 1024*8
 img_array = np.zeros((num_slices, fft_size))
 
 # Create radio.
@@ -140,7 +140,7 @@ my_sdr.sample_rate = int(sample_rate)
 # my_sdr.rx_rf_bandwidth = int(10e6)  # Analog bandwidth
 # Configure Rx
 my_sdr.rx_lo = int(center_freq)  # set this to output_freq - (the freq of the HB100)
-my_sdr.filter = "LTE20_MHz.ftr"  # Handy filter for fairly widdeband measurements
+# my_sdr.filter = "LTE20_MHz.ftr"  # Handy filter for fairly widdeband measurements
 my_sdr.rx_enabled_channels = [0, 1]  # enable Rx1 (voltage0) and Rx2 (voltage1)
 my_sdr.rx_buffer_size = int(fft_size)
 my_sdr.gain_control_mode_chan0 = "manual"  # manual or slow_attack
@@ -210,8 +210,8 @@ my_phaser.delay_clk = "PFD"  # can be 'PFD' or 'PFD*CLK1'
 my_phaser.delay_start_en = 0  # delay start
 my_phaser.ramp_delay_en = 0  # delay between ramps.
 my_phaser.trig_delay_en = 0  # triangle delay
-my_phaser.ramp_mode = "continuous_sawtooth"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
-# my_phaser.ramp_mode = "continuous_triangular"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
+# my_phaser.ramp_mode = "continuous_sawtooth"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
+my_phaser.ramp_mode = "continuous_triangular"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
 
 my_phaser.sing_ful_tri = (
     0  # full triangle enable/disable -- this is used with the single_ramp_burst mode
@@ -272,87 +272,6 @@ dist = (freq - signal_freq) * c / (4 * slope)
 # dist = freq * c / (4 * slope)
 
 xdata = freq
-# plot_dist = False
-
-
-# # Now set the phaser's PLL. This is the ADF4159, and we'll set it to the HB100 frequency
-# # plus the desired 2GHz IF, minus a small offset so we don't land at exactly DC.
-# # If the HB100 is at exactly 10.525 GHz, setting the PLL to 12.724 GHz will result
-# # in an IF at 2.201 GHz.
-
-# # offset = 1000000  # add a small offset
-# offset = 0  # add a small offset
-# my_phaser.frequency = (
-#     int(my_phaser.SignalFreq + my_sdr.rx_lo - offset)
-# ) // 4  # PLL feedback is from the VCO's /4 output
-
-
-
-# def gendata():
-#     return [np.random.random(1024),np.random.random(1024)]
-
-# fs = my_sdr.sample_rate
-# ref = 2 ** 12
-# data = my_sdr.rx()
-# freqs = np.arange(-fs/2, fs/2, fs/data[0].size)
-# freqs /= 1e6  # Scale Hz -> MHz
-
-# az = np.arange(-60, 61, 5)
-# fps = 2
-# t = np.arange(5*fps)/fps
-
-# def update_img(self):
-#     # self.img[1:,:] = self.img[:-1,:]
-#     # self.pf[1:,:] = self.pf[:-1,:]
-#     fxdata = np.zeros((az.size, freq.size),dtype=np.complex_)
-#     for avgpulse in range(1):
-#         for ia, steer in enumerate(az):
-#             self.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
-#             data = my_sdr.rx()
-#             data_sum = data[0] + data[1]
-#             N = data[0].size
-#             fxdata[ia,:] += 1 / N * np.fft.fft(data_sum)
-#     ampl = np.fft.fftshift(np.abs(fxdata))
-#     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
-#     self.img=ampl
-#         # ampl_buf.append(ampl)
-#         # peak_index = np.argmax(ampl)
-#         # self.img[0,ia]=ampl[peak_index]
-#         # self.pf[0,ia]=freqs[peak_index]
-
-# my_phaser.img = np.zeros((az.size, freq.size))
-# # my_phaser.pf = np.zeros((t.size, freq.size))
-# my_phaser.update_img = update_img
-
-# # # data_sum = data_sum *window
-    
-# # peak_index = np.argmax(ampl)  # Locate the peak frequency's index
-# # peak_freq = freqs[peak_index]  # And the frequency itself.
-# # # print("Peak frequency found at ", freqs[peak_index], " MHz.")
-# # # Now plot the data
-# # fig, ax = plt.subplots(2, 1)
-# my_phaser.update_img(my_phaser)
-# # Create the initial pcolormesh plot
-# fig, ax = plt.subplots()
-# pcm = ax.pcolormesh(dist, az, my_phaser.img, cmap='viridis', shading='auto')
-# cbar = plt.colorbar(pcm, ax=ax)
-
-# ax.set_title("signal power")
-# ax.set_xlabel("Range")
-# # ax.set_xlim(-2,5)
-# ax.set_ylabel("azimuth")
-
-# fig.tight_layout()
-
-# def update_plot(dummy=None):
-#     my_phaser.update_img(my_phaser)
-#     pcm.set_array(my_phaser.img)
-
-
-
-# animation = FuncAnimation(fig, update_plot, interval=1e3/fps)
-# plt.show()
-
 
 
 font = QtGui.QFont()
@@ -371,7 +290,7 @@ class Window(QMainWindow):
         self.num_rows = 12
         self.fft_size = fft_size
         self.freq = np.arange(0,fs,fs/int(N_frame))
-        self.az = np.arange(-60, 61, 20)
+        self.az = np.arange(-40, 41, 20)
         self.plot_dist = False
 
         self.UiComponents()
@@ -404,8 +323,6 @@ class Window(QMainWindow):
 
         # Range resolution
         # Changes with the RF BW slider
-        default_rf_bw = 500e6
-        c = 3e8
         self.range_res_label = QLabel(
             "B<sub>RF</sub>: %0.2f MHz - R<sub>res</sub>: %0.2f m"
             % (default_rf_bw / 1e6, c / (2 * default_rf_bw))
