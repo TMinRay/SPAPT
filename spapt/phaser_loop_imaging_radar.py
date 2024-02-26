@@ -53,7 +53,7 @@ import numpy as np
 from adi import ad9361
 from adi.cn0566 import CN0566
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import pyqtSlot, Qt
 from PyQt5.QtWidgets import *
 from pyqtgraph.Qt import QtCore, QtGui
 import pyqtgraph as pg
@@ -107,8 +107,8 @@ my_phaser.load_phase_cal("phase_cal_val.pkl")
 # Set all antenna elements to half scale - a typical HB100 will have plenty
 # of signal power.
 
-# gain_list = [64] * 8  # (64 is about half scale)
-gain_list = [8, 34, 84, 127, 127, 84, 34, 8]  # Blackman taper
+gain_list = [84] * 8  # (64 is about half scale)
+# gain_list = [8, 34, 84, 127, 127, 84, 34, 8]  # Blackman taper
 for i in range(0, len(gain_list)):
     my_phaser.set_chan_gain(i, gain_list[i], apply_cal=False)
 
@@ -282,17 +282,22 @@ def get_img_trans(axx,axy):
     dy = (axy[-1]-axy[0])/axy.size
     return axx[0], axy[0], dx, dy
 
+title_style = {"size": "20pt"}
+label_style = {"color": "#FFF", "font-size": "14pt"}
+
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Interactive FFT")
-        self.setGeometry(100, 100, 800, 1200)
+        self.setGeometry(100, 100, 1800, 1200)
         self.num_rows = 12
         self.fft_size = fft_size
-        self.freq = np.arange(0,fs,fs/int(N_frame))
-        self.az = np.arange(-40, 41, 20)
-        self.plot_dist = False
-
+        self.az = np.arange(-20,21,10)
+        # self.az = np.zeros((5))
+        Fs = sample_rate
+        # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
+        self.freq = np.arange(0,Fs,Fs/self.fft_size)
+        self.tframe = np.arange(50)
         self.UiComponents()
         # showing all the widgets
         self.show()
@@ -310,7 +315,7 @@ class Window(QMainWindow):
         font.setPointSize(20)
         control_label.setFont(font)
         control_label.setAlignment(Qt.AlignHCenter)  # | Qt.AlignVCenter)
-        layout.addWidget(control_label, 0, 0, 1, 2)
+        layout.addWidget(control_label, 0, 0, 1, 5)
 
         # Check boxes
         self.x_axis_check = QCheckBox("Toggle Range/Frequency x-axis")
@@ -323,6 +328,8 @@ class Window(QMainWindow):
 
         # Range resolution
         # Changes with the RF BW slider
+        default_rf_bw = 500e6
+        c = 3e8
         self.range_res_label = QLabel(
             "B<sub>RF</sub>: %0.2f MHz - R<sub>res</sub>: %0.2f m"
             % (default_rf_bw / 1e6, c / (2 * default_rf_bw))
@@ -348,28 +355,60 @@ class Window(QMainWindow):
         self.set_bw.pressed.connect(self.set_range_res)
         layout.addWidget(self.set_bw, 5, 0, 1, 2)
 
+        AZLayout = QHBoxLayout()
+        self.az_input = []
+        for ip in range(5):
+            self.az_input.append(QLineEdit())
+            self.az_input[ip].setAlignment(Qt.AlignCenter)
+            self.az_input[ip].setStyleSheet("background-color: #444; color: #fff; border: 1px solid #666;")
+            self.az_input[ip].setText('{:d}'.format(int(self.az[ip])))
+            AZLayout.addWidget(self.az_input[ip])
+            self.az_input[ip].setFont(font)
+            def update_az_wrapper(text, ip=ip):
+                self.update_az(text, ip)
+            self.az_input[ip].textChanged.connect(update_az_wrapper)
+
         # FFT plot
         self.fft_plot = pg.plot()
         self.fft_plot.setMinimumWidth(1200)
+        self.fft_plot.setMaximumHeight(300)
         self.fft_curve = self.fft_plot.plot(self.freq, pen="y", width=6)
-        title_style = {"size": "20pt"}
-        label_style = {"color": "#FFF", "font-size": "14pt"}
+
         self.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
         self.fft_plot.setLabel("left", text="Magnitude", units="dB", **label_style)
         self.fft_plot.setTitle("Received Signal - Frequency Spectrum", **title_style)
-        layout.addWidget(self.fft_plot, 0, 2, self.num_rows, 1)
-        self.fft_plot.setYRange(-80, -40)
-        # self.fft_plot.setXRange(100e3, 200e3)
+        self.fft_plot.setYRange(-45, 5)
+        self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
+        layout.addWidget(self.fft_plot, 6, 0, 2, 5)
 
+        layout.addLayout(AZLayout, 8, 0, 1, 5)
+        self.plot_xaxis = self.freq
+        
         # Waterfall plot
         # self.waterfall = pg.PlotWidget()
         self.gr_wid = pg.GraphicsLayoutWidget()
-        self.waterfall = self.gr_wid.addPlot()
-        self.imageitem = pg.ImageItem()
-        self.waterfall.addItem(self.imageitem)
-
+        self.waterfall = []
+        self.imageitem = []
+        for ip in range(5):
+            self.waterfall.append( self.gr_wid.addPlot() )
+        # self.waterfall = self.gr_wid.addPlot()
+            self.imageitem.append( pg.ImageItem() )
+            self.waterfall[ip].addItem(self.imageitem[ip])
+            self.set_Quads(self.imageitem[ip])
+        
+        # self.imageitem1 = pg.ImageItem()
+        # self.waterfall1.addItem(self.imageitem1)
+            # zoom_freq = 40e3
+            # self.waterfall[ip].setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]))
+            self.waterfall[ip].setRange(xRange=(self.tframe[0], self.tframe[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
+            self.waterfall[ip].setTitle("Waterfall AZ {:d}".format(int(self.az[ip])), **title_style)
+            self.waterfall[ip].setLabel("left", "Frequency", units="Hz", **label_style)
+            self.waterfall[ip].setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
+            self.waterfall[ip].getAxis("bottom").setTickFont(font)
+            self.waterfall[ip].getAxis("left").setTickFont(font)
+        # self.waterfall.setTickFont
         bar = pg.ColorBarItem(
-            values = (-80, -40),
+            values = (-45, 5),
             colorMap='CET-L4',
             label='horizontal color bar',
             limits = (None, None),
@@ -377,31 +416,38 @@ class Window(QMainWindow):
             orientation = 'h',
             pen='#8888FF', hoverPen='#EEEEFF', hoverBrush='#EEEEFF80'
         )
-        bar.setImageItem( self.imageitem, insert_in=self.waterfall )
-        self.plot_xaxis = self.freq
-        self.set_Quads()
-            # zoom_freq = 40e3
-        self.waterfall.setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]))
-        self.waterfall.setTitle("Waterfall Spectrum", **title_style)
-        self.waterfall.setLabel("left", "Frequency", units="Hz", **label_style)
-        self.waterfall.setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
-        self.waterfall.getAxis("bottom").setTickFont(font)
-        self.waterfall.getAxis("left").setTickFont(font)
-        # self.waterfall.setTickFont
+        # bar.setImageItem( self.imageitem, insert_in=self.waterfall )
+        bar.setImageItem( self.imageitem )
+        self.gr_wid.addItem(bar, 1, 0, 1, 5)
+        layout.addWidget(self.gr_wid, 11, 0, 18, 5)
 
-        layout.addWidget(self.gr_wid, 0 + self.num_rows + 1, 2, self.num_rows, 1)
-        # self.img_array = np.zeros((num_slices, fft_size))
+        # self.br_wid = pg.GraphicsLayoutWidget()
+        # self.cb = self.br_wid.addPlot()
+        # self.cb.addItem(bar)
+
+        # layout.addWidget(self.br_wid, 19, 0, 1, 5)
+        # # self.img_array = np.zeros((num_slices, fft_size))
 
         widget.setLayout(layout)
         # setting this widget as central widget of the main window
         self.setCentralWidget(widget)
 
-    def set_Quads(self):
+    def set_Quads(self, im):
         tr = QtGui.QTransform()
-        trans_para = get_img_trans(self.az,self.plot_xaxis)
+        # trans_para = get_img_trans(self.az,self.plot_xaxis)
+        trans_para = get_img_trans(self.tframe,self.plot_xaxis)
         tr.translate(trans_para[0], trans_para[1])
         tr.scale(trans_para[2], trans_para[3])
-        self.imageitem.setTransform(tr)
+        im.setTransform(tr)
+
+    @pyqtSlot(str)
+    def update_az(self, text, ix):
+        # print(text)
+        if is_float(text):
+            self.az[ix] = float(text)
+            self.waterfall[ix].setTitle("Waterfall AZ {:d}".format(int(self.az[ix])), **title_style)
+        else:
+            print(is_float(text))
 
     def get_range_res(self):
         """ Updates the slider bar label with RF bandwidth and range resolution
@@ -446,20 +492,20 @@ class Window(QMainWindow):
         Returns:
             None
         """
-        global slope
+        global dist, slope
         bw = self.bw_slider.value() * 1e6
         slope = bw / ramp_time_s
         dist = (freq - signal_freq) * c / (4 * slope)
         print("New slope: %0.2fMHz/s" % (slope / 1e6))
         if self.x_axis_check.isChecked() == True:
             print("Range axis")
-            self.plot_dist = True
+            plot_dist = True
             range_x = (100e3) * c / (4 * slope)
             self.fft_plot.setXRange(0, range_x)
         else:
             print("Frequency axis")
-            self.plot_dist = False
-            self.fft_plot.setXRange(100e3, 200e3)
+            plot_dist = False
+            self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
         my_phaser.freq_dev_range = int(bw / 4)  # frequency deviation range in Hz
         my_phaser.enable = 0
 
@@ -470,7 +516,7 @@ class Window(QMainWindow):
         Returns:
             None
         """
-        global slope
+        global plot_dist, slope
         # plot_state = win.fft_plot.getViewBox().state
         # if state == QtCore.Qt.Checked:
         #     print("Range axis")
@@ -487,25 +533,36 @@ class Window(QMainWindow):
         print("New slope: %0.2fMHz/s" % (slope / 1e6))
         if self.x_axis_check.isChecked() == True:
             print("Range axis")
-            self.plot_dist = True
+            plot_dist = True
             range_x = np.max(self.freq) * c / (4 * slope)
             self.plot_xaxis = dist
-            # self.fft_plot.setXRange(0, range_x/2)
-            # self.waterfall.setRange(yRange=(0, range_x/2))
-            self.fft_plot.setXRange(0, 30)
-            self.waterfall.setRange(yRange=(0, 30))
-            self.waterfall.setLabel("left", "Range", units="m")
             self.fft_plot.setLabel("bottom", text="Range", units="m")
-            self.set_Quads()
+            # self.fft_plot.setXRange(0, range_x/2)
+            self.fft_plot.setXRange(0, 5)
+            for ip in range(5):
+                # self.waterfall[ip].setRange(yRange=(0, range_x/2))
+                self.waterfall[ip].setRange(yRange=(0, 5))
+                self.waterfall[ip].setLabel("left", "Range", units="m")
+                self.set_Quads(self.imageitem[ip])
         else:
             print("Frequency axis")
-            self.plot_dist = False
+            plot_dist = False
             self.plot_xaxis = self.freq
-            self.fft_plot.setXRange(signal_freq, np.max(self.freq)/2)
-            self.waterfall.setRange(yRange=(signal_freq, np.max(self.freq)/2))
-            self.waterfall.setLabel("left", "Frequency", units="Hz")
+            # self.fft_plot.setXRange(0, 200e3)
+            self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
             self.fft_plot.setLabel("bottom", text="Frequency", units="Hz")
-            self.set_Quads()
+            for ip in range(5):
+                self.waterfall[ip].setRange(yRange=(self.freq[0],self.freq[-1]/2))
+                self.waterfall[ip].setLabel("left", "Frequency", units="Hz")
+                self.set_Quads(self.imageitem[ip])
+
+def is_float(value):
+    try:
+        float(value)
+        return True
+    except ValueError:
+        print(value)
+        return False
 
 
 # create pyqt5 app
@@ -516,28 +573,38 @@ win = Window()
 index = 0
 
 ref = 2 ** 12
-
+win.img = np.full((win.az.size, win.tframe.size, win.freq.size),-300)
+win.offset = -300
 def update():
-
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
     fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
+    win_funct = np.blackman(win.freq.size)
     for avgpulse in range(1):
         for ia, steer in enumerate(win.az):
             my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
-            data = my_sdr.rx()
+            # sleep(5e-2)
+            for i in range(4):
+                data = my_sdr.rx()
+            # N = win.fft_size
+            # t = np.arange(N)/sample_rate
+            # data = [np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t)),np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t))]
             data_sum = data[0] + data[1]
-            N = data[0].size
-            fxdata[ia,:] += 1 / N * np.fft.fft(data_sum)
-            frdata += 1 / N * np.fft.fft(data_sum)
-    frdata = frdata/win.az.size
+            fxdata[ia,:] = 1 / N * np.fft.fft(data_sum * win_funct)
+            frdata += 1 / N * np.fft.fft(data_sum * win_funct)
     ampl = np.abs(fxdata)
     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
-    win.img = ampl
-    win.imageitem.setImage(win.img, autoLevels=False)
-    if win.plot_dist:
-        win.fft_curve.setData(dist, 20 * np.log10(np.abs(frdata) / ref + 10 ** -20))
-    else:
-        win.fft_curve.setData(win.freq, 20 * np.log10(np.abs(frdata) / ref + 10 ** -20))
+    win.img = np.roll( win.img, 1, axis=1 )
+    win.img[:,0,:] = ampl
+    pr = np.abs(frdata)
+    pr = 20 * np.log10(pr / ref + 10 ** -20)
+    pr = pr - np.max(pr)
+    if np.abs(win.offset-np.max(win.img))>5:
+        win.offset=np.max(win.img)
+    for ip in range(5):
+        win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset, autoLevels=False)
+    win.fft_curve.setData(win.plot_xaxis, pr)
+    # win.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
+
 
 timer = QtCore.QTimer()
 timer.timeout.connect(update)
