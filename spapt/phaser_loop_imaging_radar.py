@@ -110,7 +110,8 @@ my_phaser.load_phase_cal("phase_cal_val.pkl")
 gain_list = [84] * 8  # (64 is about half scale)
 # gain_list = [8, 34, 84, 127, 127, 84, 34, 8]  # Blackman taper
 for i in range(0, len(gain_list)):
-    my_phaser.set_chan_gain(i, gain_list[i], apply_cal=False)
+    # my_phaser.set_chan_gain(i, gain_list[i], apply_cal=False)
+    my_phaser.set_chan_gain(i, gain_list[i])
 
 # Aim the beam at boresight (zero degrees). Place HB100 right in front of array.
 my_phaser.set_beam_phase_diff(0.0)
@@ -200,7 +201,7 @@ my_phaser.freq_dev_range = int(
     BW / 4
 )  # frequency deviation range in Hz.  This is the total freq deviation of the complete freq ramp
 my_phaser.freq_dev_step = int(
-    BW / num_steps
+    BW / num_steps / 4
 )  # frequency deviation step in Hz.  This is fDEV, in Hz.  Can be positive or negative
 my_phaser.freq_dev_time = int(
     ramp_time
@@ -285,12 +286,21 @@ def get_img_trans(axx,axy):
 title_style = {"size": "20pt"}
 label_style = {"color": "#FFF", "font-size": "14pt"}
 
+
+def nuttall_window(N):
+    a=[0.3635819,
+    0.4891775,
+    0.1365995,
+    0.0106411]
+    x=np.arange(N)/N*np.pi
+    return a[0] - a[1]*np.cos(2*x) + a[2]*np.cos(4*x) - a[3]*np.cos(6*x)
+
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Interactive FFT")
         self.setGeometry(100, 100, 1800, 1200)
-        self.num_rows = 12
+        # self.num_rows = 12
         self.fft_size = fft_size
         self.az = np.arange(-20,21,10)
         # self.az = np.zeros((5))
@@ -298,6 +308,10 @@ class Window(QMainWindow):
         # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
         self.freq = np.arange(0,Fs,Fs/self.fft_size)
         self.tframe = np.arange(50)
+        self.img = np.full((self.az.size, self.tframe.size, self.freq.size),-300)
+        self.r_cal = np.zeros((sself.freq.size))[np.newaxis,np.newaxis,:]
+        self.offset = -300
+        # self.plot_dist = False
         self.UiComponents()
         # showing all the widgets
         self.show()
@@ -310,7 +324,7 @@ class Window(QMainWindow):
         layout = QGridLayout()
 
         # Control Panel
-        control_label = QLabel("ADALM-PHASER Simple FMCW Radar")
+        control_label = QLabel("CN0566 FMCW Radar")
         font = control_label.font()
         font.setPointSize(20)
         control_label.setFont(font)
@@ -326,10 +340,17 @@ class Window(QMainWindow):
         self.x_axis_check.stateChanged.connect(self.change_x_axis)
         layout.addWidget(self.x_axis_check, 2, 0)
 
+        self.r_cal_check = QCheckBox("Toggle Range correction factor")
+        font = self.r_cal_check.font()
+        self.r_cal_check.setFont(font)
+
+        self.r_cal_check.stateChanged.connect(self.range_correction)
+        layout.addWidget(self.r_cal_check, 2, 3)
+
         # Range resolution
         # Changes with the RF BW slider
-        default_rf_bw = 500e6
-        c = 3e8
+        default_rf_bw = BW
+        # c = 3e8
         self.range_res_label = QLabel(
             "B<sub>RF</sub>: %0.2f MHz - R<sub>res</sub>: %0.2f m"
             % (default_rf_bw / 1e6, c / (2 * default_rf_bw))
@@ -403,7 +424,8 @@ class Window(QMainWindow):
             self.waterfall[ip].setRange(xRange=(self.tframe[0], self.tframe[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
             self.waterfall[ip].setTitle("Waterfall AZ {:d}".format(int(self.az[ip])), **title_style)
             self.waterfall[ip].setLabel("left", "Frequency", units="Hz", **label_style)
-            self.waterfall[ip].setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
+            # self.waterfall[ip].setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
+            self.waterfall[ip].setLabel("bottom", "Frame", **label_style)
             self.waterfall[ip].getAxis("bottom").setTickFont(font)
             self.waterfall[ip].getAxis("left").setTickFont(font)
         # self.waterfall.setTickFont
@@ -461,53 +483,64 @@ class Window(QMainWindow):
             % (bw / 1e6, c / (2 * bw))
         )
 
-    def get_water_levels(self):
-        """ Updates the waterfall intensity levels
-        Returns:
-            None
-        """
-        if self.low_slider.value() > self.high_slider.value():
-            self.low_slider.setValue(self.high_slider.value())
-        self.low_label.setText("LOW LEVEL: %0.0f" % (self.low_slider.value()))
-        self.high_label.setText("HIGH LEVEL: %0.0f" % (self.high_slider.value()))
+    # def get_water_levels(self):
+    #     """ Updates the waterfall intensity levels
+    #     Returns:
+    #         None
+    #     """
+    #     if self.low_slider.value() > self.high_slider.value():
+    #         self.low_slider.setValue(self.high_slider.value())
+    #     self.low_label.setText("LOW LEVEL: %0.0f" % (self.low_slider.value()))
+    #     self.high_label.setText("HIGH LEVEL: %0.0f" % (self.high_slider.value()))
 
-    def get_steer_angle(self):
-        """ Updates the steering angle readout
-        Returns:
-            None
-        """
-        self.steer_label.setText("%0.0f DEG" % (self.steer_slider.value()))
-        phase_delta = (
-            2
-            * 3.14159
-            * 10.25e9
-            * 0.014
-            * np.sin(np.radians(self.steer_slider.value()))
-            / (3e8)
-        )
-        my_phaser.set_beam_phase_diff(np.degrees(phase_delta))
+    # def get_steer_angle(self):
+    #     """ Updates the steering angle readout
+    #     Returns:
+    #         None
+    #     """
+    #     self.steer_label.setText("%0.0f DEG" % (self.steer_slider.value()))
+    #     phase_delta = (
+    #         2
+    #         * 3.14159
+    #         * 10.25e9
+    #         * 0.014
+    #         * np.sin(np.radians(self.steer_slider.value()))
+    #         / (3e8)
+    #     )
+    #     my_phaser.set_beam_phase_diff(np.degrees(phase_delta))
 
     def set_range_res(self):
         """ Sets the RF bandwidth
         Returns:
             None
         """
-        global dist, slope
+        # global slope
         bw = self.bw_slider.value() * 1e6
         slope = bw / ramp_time_s
         dist = (freq - signal_freq) * c / (4 * slope)
         print("New slope: %0.2fMHz/s" % (slope / 1e6))
-        if self.x_axis_check.isChecked() == True:
-            print("Range axis")
-            plot_dist = True
-            range_x = (100e3) * c / (4 * slope)
-            self.fft_plot.setXRange(0, range_x)
-        else:
-            print("Frequency axis")
-            plot_dist = False
-            self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
+        # if self.x_axis_check.isChecked() == True:
+        #     print("Range axis")
+        #     # self.plot_dist = True
+        #     range_x = (100e3) * c / (4 * slope)
+        #     self.fft_plot.setXRange(0, range_x)
+        # else:
+        #     print("Frequency axis")
+        #     # self.plot_dist = False
+        #     self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
         my_phaser.freq_dev_range = int(bw / 4)  # frequency deviation range in Hz
+        my_phaser.freq_dev_step = int(
+            BW / num_steps/ 4
+        )
         my_phaser.enable = 0
+        self.change_x_axis(self.x_axis_check.isChecked())
+        self.img = np.full((win.az.size, win.tframe.size, win.freq.size),-300)
+
+    def get_dist(self):
+        bw = self.bw_slider.value() * 1e6
+        slope = bw / ramp_time_s
+        dist = (self.freq - signal_freq) * c / (4 * slope)
+        return dist
 
     def change_x_axis(self, state):
         """ Toggles between showing frequency and range for the x-axis
@@ -516,7 +549,7 @@ class Window(QMainWindow):
         Returns:
             None
         """
-        global plot_dist, slope
+        # global slope
         # plot_state = win.fft_plot.getViewBox().state
         # if state == QtCore.Qt.Checked:
         #     print("Range axis")
@@ -527,15 +560,14 @@ class Window(QMainWindow):
         #     print("Frequency axis")
         #     plot_dist = False
         #     self.fft_plot.setXRange(100e3, 200e3)
-        bw = self.bw_slider.value() * 1e6
-        slope = bw / ramp_time_s
-        dist = (self.freq - signal_freq) * c / (4 * slope)
-        print("New slope: %0.2fMHz/s" % (slope / 1e6))
+        dist = self.get_dist()
+        # print("New slope: %0.2fMHz/s" % (slope / 1e6))
         if self.x_axis_check.isChecked() == True:
             print("Range axis")
-            plot_dist = True
-            range_x = np.max(self.freq) * c / (4 * slope)
+            # self.plot_dist = True
+            range_x = np.max(self.freq - signal_freq) * c / (4 * slope)
             self.plot_xaxis = dist
+            self.fft_plot.setTitle("Received Signal - Range", **title_style)
             self.fft_plot.setLabel("bottom", text="Range", units="m")
             # self.fft_plot.setXRange(0, range_x/2)
             self.fft_plot.setXRange(0, 5)
@@ -546,15 +578,26 @@ class Window(QMainWindow):
                 self.set_Quads(self.imageitem[ip])
         else:
             print("Frequency axis")
-            plot_dist = False
+            # self.plot_dist = False
             self.plot_xaxis = self.freq
             # self.fft_plot.setXRange(0, 200e3)
             self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
+            self.fft_plot.setTitle("Received Signal - Frequency Spectrum", **title_style)
             self.fft_plot.setLabel("bottom", text="Frequency", units="Hz")
             for ip in range(5):
                 self.waterfall[ip].setRange(yRange=(self.freq[0],self.freq[-1]/2))
                 self.waterfall[ip].setLabel("left", "Frequency", units="Hz")
                 self.set_Quads(self.imageitem[ip])
+
+    def range_correction(self, state):
+        if state == QtCore.Qt.Checked:
+            self.r_cal = np.zeros((sself.freq.size))[np.newaxis,np.newaxis,:]
+        else:
+            self.r_cal = np.full((sself.freq.size),-999)
+            dist = self.get_dist()
+            self.r_cal[dist>0] = 40*np.log10(dist[dist>0])
+            self.r_cal = self.r_cal[np.newaxis,np.newaxis,:]
+
 
 def is_float(value):
     try:
@@ -573,12 +616,13 @@ win = Window()
 index = 0
 
 ref = 2 ** 12
-win.img = np.full((win.az.size, win.tframe.size, win.freq.size),-300)
-win.offset = -300
+# win.img = np.full((win.az.size, win.tframe.size, win.freq.size),-300)
+
 def update():
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
     fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
-    win_funct = np.blackman(win.freq.size)
+    # win_funct = np.blackman(win.freq.size)
+    win_funct = nuttall_window(win.freq.size)
     for avgpulse in range(1):
         for ia, steer in enumerate(win.az):
             my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
@@ -601,7 +645,7 @@ def update():
     if np.abs(win.offset-np.max(win.img))>5:
         win.offset=np.max(win.img)
     for ip in range(5):
-        win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset, autoLevels=False)
+        win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
     win.fft_curve.setData(win.plot_xaxis, pr)
     # win.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
 
