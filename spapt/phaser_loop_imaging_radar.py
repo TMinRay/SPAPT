@@ -131,7 +131,8 @@ sample_rate = 0.6e6
 center_freq = 2.2e9
 signal_freq = 100e3
 num_slices = 200
-fft_size = 1024 * 16
+# fft_size = 1024 * 16
+fft_size = 1024 * 4
 # fft_size = 1024*8
 img_array = np.zeros((num_slices, fft_size))
 
@@ -302,14 +303,16 @@ class Window(QMainWindow):
         self.setGeometry(100, 100, 1800, 1200)
         # self.num_rows = 12
         self.fft_size = fft_size
-        self.az = np.arange(-20,21,10)
+        # self.az = np.arange(-30,31,15)
+        self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,3)))
         # self.az = np.zeros((5))
         Fs = sample_rate
         # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
         self.freq = np.arange(0,Fs,Fs/self.fft_size)
         self.tframe = np.arange(50)
-        self.img = np.full((self.az.size, self.tframe.size, self.freq.size),-300)
-        self.r_cal = np.zeros((sself.freq.size))[np.newaxis,np.newaxis,:]
+        self.img = np.full((5, self.tframe.size, self.freq.size),-300)
+        self.fan = np.full((self.az.size-5, self.freq.size),-300)
+        self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
         self.offset = -300
         # self.plot_dist = False
         self.UiComponents()
@@ -329,7 +332,7 @@ class Window(QMainWindow):
         font.setPointSize(20)
         control_label.setFont(font)
         control_label.setAlignment(Qt.AlignHCenter)  # | Qt.AlignVCenter)
-        layout.addWidget(control_label, 0, 0, 1, 5)
+        
 
         # Check boxes
         self.x_axis_check = QCheckBox("Toggle Range/Frequency x-axis")
@@ -338,14 +341,13 @@ class Window(QMainWindow):
         self.x_axis_check.setFont(font)
 
         self.x_axis_check.stateChanged.connect(self.change_x_axis)
-        layout.addWidget(self.x_axis_check, 2, 0)
 
         self.r_cal_check = QCheckBox("Toggle Range correction factor")
         font = self.r_cal_check.font()
         self.r_cal_check.setFont(font)
 
         self.r_cal_check.stateChanged.connect(self.range_correction)
-        layout.addWidget(self.r_cal_check, 2, 3)
+
 
         # Range resolution
         # Changes with the RF BW slider
@@ -360,7 +362,7 @@ class Window(QMainWindow):
         self.range_res_label.setFont(font)
         self.range_res_label.setAlignment(Qt.AlignRight)
         self.range_res_label.setMinimumWidth(300)
-        layout.addWidget(self.range_res_label, 4, 1)
+
 
         # RF bandwidth slider
         self.bw_slider = QSlider(Qt.Horizontal)
@@ -370,11 +372,11 @@ class Window(QMainWindow):
         self.bw_slider.setTickInterval(50)
         self.bw_slider.setTickPosition(QSlider.TicksBelow)
         self.bw_slider.valueChanged.connect(self.get_range_res)
-        layout.addWidget(self.bw_slider, 4, 0)
+        
 
         self.set_bw = QPushButton("Set RF Bandwidth")
         self.set_bw.pressed.connect(self.set_range_res)
-        layout.addWidget(self.set_bw, 5, 0, 1, 2)
+
 
         AZLayout = QHBoxLayout()
         self.az_input = []
@@ -391,20 +393,32 @@ class Window(QMainWindow):
 
         # FFT plot
         self.fft_plot = pg.plot()
-        self.fft_plot.setMinimumWidth(1200)
+        self.fft_plot.setMinimumWidth(400)
         self.fft_plot.setMaximumHeight(300)
         self.fft_curve = self.fft_plot.plot(self.freq, pen="y", width=6)
 
         self.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
         self.fft_plot.setLabel("left", text="Magnitude", units="dB", **label_style)
         self.fft_plot.setTitle("Received Signal - Frequency Spectrum", **title_style)
-        self.fft_plot.setYRange(-45, 5)
+        self.fft_plot.setYRange(-55, 5)
         self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
-        layout.addWidget(self.fft_plot, 6, 0, 2, 5)
 
-        layout.addLayout(AZLayout, 8, 0, 1, 5)
         self.plot_xaxis = self.freq
         
+        self.fan_wid = pg.GraphicsLayoutWidget()
+        self.fanaxs = self.fan_wid.addPlot()
+        self.fanaxs.setMinimumWidth(1200)
+        self.fanimage = pg.ImageItem()
+        self.set_Quads(self.fanimage, plot_az=True)
+        # self.fanaxs.setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
+        self.fanaxs.setTitle("Imaging", **title_style)
+        self.fanaxs.setLabel("left", "Frequency", units="Hz", **label_style)
+        self.fanaxs.setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
+        self.fanaxs.getAxis("bottom").setTickFont(font)
+        self.fanaxs.getAxis("left").setTickFont(font)
+        self.fanaxs.addItem(self.fanimage)
+
+
         # Waterfall plot
         # self.waterfall = pg.PlotWidget()
         self.gr_wid = pg.GraphicsLayoutWidget()
@@ -428,9 +442,10 @@ class Window(QMainWindow):
             self.waterfall[ip].setLabel("bottom", "Frame", **label_style)
             self.waterfall[ip].getAxis("bottom").setTickFont(font)
             self.waterfall[ip].getAxis("left").setTickFont(font)
+        self.imageitem.append( self.fanimage )
         # self.waterfall.setTickFont
         bar = pg.ColorBarItem(
-            values = (-45, 5),
+            values = (-50, 5),
             colorMap='CET-L4',
             label='horizontal color bar',
             limits = (None, None),
@@ -441,6 +456,17 @@ class Window(QMainWindow):
         # bar.setImageItem( self.imageitem, insert_in=self.waterfall )
         bar.setImageItem( self.imageitem )
         self.gr_wid.addItem(bar, 1, 0, 1, 5)
+
+
+        layout.addWidget(control_label, 0, 0, 1, 5)
+        layout.addWidget(self.fft_plot, 6, 0, 1, 5)
+        layout.addWidget(self.x_axis_check, 2, 0)
+        layout.addWidget(self.r_cal_check, 2, 2)
+        layout.addWidget(self.range_res_label, 4, 1)
+        layout.addWidget(self.bw_slider, 4, 0)
+        layout.addWidget(self.set_bw, 5, 0, 1, 2)
+        layout.addWidget(self.fan_wid, 6, 0, 2, 1)
+        layout.addLayout(AZLayout, 8, 0, 1, 5)
         layout.addWidget(self.gr_wid, 11, 0, 18, 5)
 
         # self.br_wid = pg.GraphicsLayoutWidget()
@@ -454,10 +480,12 @@ class Window(QMainWindow):
         # setting this widget as central widget of the main window
         self.setCentralWidget(widget)
 
-    def set_Quads(self, im):
+    def set_Quads(self, im, plot_az = False):
         tr = QtGui.QTransform()
-        # trans_para = get_img_trans(self.az,self.plot_xaxis)
-        trans_para = get_img_trans(self.tframe,self.plot_xaxis)
+        if plot_az:
+            trans_para = get_img_trans(self.az[5:],self.plot_xaxis)
+        else:
+            trans_para = get_img_trans(self.tframe,self.plot_xaxis)
         tr.translate(trans_para[0], trans_para[1])
         tr.scale(trans_para[2], trans_para[3])
         im.setTransform(tr)
@@ -570,12 +598,15 @@ class Window(QMainWindow):
             self.fft_plot.setTitle("Received Signal - Range", **title_style)
             self.fft_plot.setLabel("bottom", text="Range", units="m")
             # self.fft_plot.setXRange(0, range_x/2)
-            self.fft_plot.setXRange(0, 5)
+            self.fft_plot.setXRange(0, 10)
             for ip in range(5):
                 # self.waterfall[ip].setRange(yRange=(0, range_x/2))
-                self.waterfall[ip].setRange(yRange=(0, 5))
+                self.waterfall[ip].setRange(yRange=(0, 10))
                 self.waterfall[ip].setLabel("left", "Range", units="m")
                 self.set_Quads(self.imageitem[ip])
+            self.set_Quads(self.fanimage, plot_az=True)
+            self.fanaxs.setRange(yRange=(0, 10))
+            self.fanaxs.setLabel("left", "Range", units="m")
         else:
             print("Frequency axis")
             # self.plot_dist = False
@@ -588,16 +619,18 @@ class Window(QMainWindow):
                 self.waterfall[ip].setRange(yRange=(self.freq[0],self.freq[-1]/2))
                 self.waterfall[ip].setLabel("left", "Frequency", units="Hz")
                 self.set_Quads(self.imageitem[ip])
+            self.set_Quads(self.fanimage, plot_az=True)
+            self.fanaxs.setRange(yRange=(self.freq[0],self.freq[-1]/2))
+            self.fanaxs.setLabel("left", "Frequency", units="Hz")
 
     def range_correction(self, state):
         if state == QtCore.Qt.Checked:
-            self.r_cal = np.zeros((sself.freq.size))[np.newaxis,np.newaxis,:]
-        else:
-            self.r_cal = np.full((sself.freq.size),-999)
+            self.r_cal = np.full((self.freq.size),-999)
             dist = self.get_dist()
-            self.r_cal[dist>0] = 40*np.log10(dist[dist>0])
-            self.r_cal = self.r_cal[np.newaxis,np.newaxis,:]
-
+            self.r_cal[dist>0] = 20*np.log10(dist[dist>0]) - 20*np.log10(5)
+            self.r_cal = self.r_cal[np.newaxis,:]
+        else:
+            self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
 
 def is_float(value):
     try:
@@ -623,22 +656,23 @@ def update():
     fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
     # win_funct = np.blackman(win.freq.size)
     win_funct = nuttall_window(win.freq.size)
-    for avgpulse in range(1):
-        for ia, steer in enumerate(win.az):
-            my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
-            # sleep(5e-2)
-            for i in range(4):
-                data = my_sdr.rx()
-            # N = win.fft_size
-            # t = np.arange(N)/sample_rate
-            # data = [np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t)),np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t))]
-            data_sum = data[0] + data[1]
-            fxdata[ia,:] = 1 / N * np.fft.fft(data_sum * win_funct)
-            frdata += 1 / N * np.fft.fft(data_sum * win_funct)
+    # for avgpulse in range(1):
+    for ia, steer in enumerate(win.az):
+        my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
+        # sleep(5e-2)
+        for i in range(4):
+            data = my_sdr.rx()
+        # N = win.fft_size
+        # t = np.arange(N)/sample_rate
+        # data = [np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t)),np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t))]
+        data_sum = data[0] + data[1]
+        fxdata[ia,:] = 1 / N * np.fft.fft(data_sum * win_funct)
+        frdata += 1 / N * np.fft.fft(data_sum * win_funct)
     ampl = np.abs(fxdata)
     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
     win.img = np.roll( win.img, 1, axis=1 )
-    win.img[:,0,:] = ampl
+    win.img[:,0,:] = ampl[:5,:]
+    win.fan = ampl[5:,:]
     pr = np.abs(frdata)
     pr = 20 * np.log10(pr / ref + 10 ** -20)
     pr = pr - np.max(pr)
@@ -646,6 +680,7 @@ def update():
         win.offset=np.max(win.img)
     for ip in range(5):
         win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
+    win.fanimage.setImage(win.fan - win.offset + win.r_cal, autoLevels=False)
     win.fft_curve.setData(win.plot_xaxis, pr)
     # win.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
 
