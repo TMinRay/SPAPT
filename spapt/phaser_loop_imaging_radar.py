@@ -329,7 +329,7 @@ class Window(QMainWindow):
         # Control Panel
         control_label = QLabel("CN0566 FMCW Imaging Radar")
         font = control_label.font()
-        font.setPointSize(20)
+        font.setPointSize(28)
         control_label.setFont(font)
         control_label.setAlignment(Qt.AlignHCenter)  # | Qt.AlignVCenter)
         
@@ -337,7 +337,7 @@ class Window(QMainWindow):
         # Check boxes
         self.x_axis_check = QCheckBox("Toggle Range/Frequency x-axis")
         font = self.x_axis_check.font()
-        font.setPointSize(15)
+        font.setPointSize(20)
         self.x_axis_check.setFont(font)
 
         self.x_axis_check.stateChanged.connect(self.change_x_axis)
