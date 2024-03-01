@@ -300,7 +300,7 @@ class Window(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Interactive FFT")
-        self.setGeometry(100, 100, 1800, 1200)
+        self.setGeometry(20, 20, 1800, 1400)
         # self.num_rows = 12
         self.fft_size = fft_size
         # self.az = np.arange(-30,31,15)
@@ -310,7 +310,7 @@ class Window(QMainWindow):
         # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
         self.freq = np.arange(0,Fs,Fs/self.fft_size)
         self.tframe = np.arange(50)
-        self.img = np.full((5, self.tframe.size, self.freq.size),-300)
+        self.clear_img()
         self.fan = np.full((self.az.size-5, self.freq.size),-300)
         self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
         self.offset = -300
@@ -327,7 +327,7 @@ class Window(QMainWindow):
         layout = QGridLayout()
 
         # Control Panel
-        control_label = QLabel("CN0566 FMCW Radar")
+        control_label = QLabel("CN0566 FMCW Imaging Radar")
         font = control_label.font()
         font.setPointSize(20)
         control_label.setFont(font)
@@ -394,7 +394,7 @@ class Window(QMainWindow):
         # FFT plot
         self.fft_plot = pg.plot()
         self.fft_plot.setMinimumWidth(400)
-        self.fft_plot.setMaximumHeight(300)
+        self.fft_plot.setMaximumHeight(150)
         self.fft_curve = self.fft_plot.plot(self.freq, pen="y", width=6)
 
         self.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
@@ -407,11 +407,12 @@ class Window(QMainWindow):
         
         self.fan_wid = pg.GraphicsLayoutWidget()
         self.fanaxs = self.fan_wid.addPlot()
-        self.fanaxs.setMinimumWidth(1200)
+        self.fan_wid.setMinimumWidth(1000)
+        self.fan_wid.setMinimumHeight(350)
         self.fanimage = pg.ImageItem()
         self.set_Quads(self.fanimage, plot_az=True)
         # self.fanaxs.setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
-        self.fanaxs.setTitle("Imaging", **title_style)
+        self.fanaxs.setTitle("Realtime Imaging", **title_style)
         self.fanaxs.setLabel("left", "Frequency", units="Hz", **label_style)
         self.fanaxs.setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
         self.fanaxs.getAxis("bottom").setTickFont(font)
@@ -457,15 +458,17 @@ class Window(QMainWindow):
         bar.setImageItem( self.imageitem )
         self.gr_wid.addItem(bar, 1, 0, 1, 5)
 
-
         layout.addWidget(control_label, 0, 0, 1, 5)
-        layout.addWidget(self.fft_plot, 6, 0, 1, 5)
-        layout.addWidget(self.x_axis_check, 2, 0)
-        layout.addWidget(self.r_cal_check, 2, 2)
-        layout.addWidget(self.range_res_label, 4, 1)
-        layout.addWidget(self.bw_slider, 4, 0)
-        layout.addWidget(self.set_bw, 5, 0, 1, 2)
-        layout.addWidget(self.fan_wid, 6, 0, 2, 1)
+
+        layout.addWidget(self.fft_plot, 1, 0, 2, 5)
+        layout.addWidget(self.fan_wid, 4, 0, 4, 2)
+        btlayout = QGridLayout()
+        btlayout.addWidget(self.x_axis_check, 0, 0)
+        btlayout.addWidget(self.r_cal_check, 0, 1)
+        btlayout.addWidget(self.range_res_label, 2, 1)
+        btlayout.addWidget(self.bw_slider, 2, 0)
+        btlayout.addWidget(self.set_bw, 3, 0, 1, 2)
+        layout.addLayout(btlayout, 4, 2, 4, 1)
         layout.addLayout(AZLayout, 8, 0, 1, 5)
         layout.addWidget(self.gr_wid, 11, 0, 18, 5)
 
@@ -558,11 +561,14 @@ class Window(QMainWindow):
         #     self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
         my_phaser.freq_dev_range = int(bw / 4)  # frequency deviation range in Hz
         my_phaser.freq_dev_step = int(
-            BW / num_steps/ 4
+            bw / num_steps/ 4
         )
         my_phaser.enable = 0
         self.change_x_axis(self.x_axis_check.isChecked())
-        self.img = np.full((win.az.size, win.tframe.size, win.freq.size),-300)
+        self.clear_img()
+
+    def clear_img(self):
+        self.img = np.full((5, self.tframe.size, self.freq.size),-300)
 
     def get_dist(self):
         bw = self.bw_slider.value() * 1e6
