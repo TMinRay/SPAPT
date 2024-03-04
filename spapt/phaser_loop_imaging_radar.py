@@ -604,14 +604,14 @@ class Window(QMainWindow):
             self.fft_plot.setTitle("Received Signal - Range", **title_style)
             self.fft_plot.setLabel("bottom", text="Range", units="m")
             # self.fft_plot.setXRange(0, range_x/2)
-            self.fft_plot.setXRange(0, 10)
+            self.fft_plot.setXRange(0, 5)
             for ip in range(5):
                 # self.waterfall[ip].setRange(yRange=(0, range_x/2))
-                self.waterfall[ip].setRange(yRange=(0, 10))
+                self.waterfall[ip].setRange(yRange=(0, 5))
                 self.waterfall[ip].setLabel("left", "Range", units="m")
                 self.set_Quads(self.imageitem[ip])
             self.set_Quads(self.fanimage, plot_az=True)
-            self.fanaxs.setRange(yRange=(0, 10))
+            self.fanaxs.setRange(yRange=(0, 5))
             self.fanaxs.setLabel("left", "Range", units="m")
         else:
             print("Frequency axis")
@@ -667,6 +667,7 @@ def update():
         my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
         # sleep(5e-2)
         for i in range(4):
+        # for i in range(1):
             data = my_sdr.rx()
         # N = win.fft_size
         # t = np.arange(N)/sample_rate
