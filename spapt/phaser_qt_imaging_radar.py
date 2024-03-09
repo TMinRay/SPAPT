@@ -50,6 +50,7 @@ from time import sleep
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
+import adi
 from adi import ad9361
 from adi.cn0566 import CN0566
 
@@ -148,7 +149,7 @@ num_slices = 200
 # fft_size = 1024 * 4
 CPI_pulse = 4
 # fft_size = 1024*8
-img_array = np.zeros((num_slices, fft_size))
+# img_array = np.zeros((num_slices, fft_size))
 
 # Create radio.
 # This script is for Pluto Rev C, dual channel setup
@@ -316,7 +317,7 @@ ts = 1 / float(fs)
 t = np.arange(0, N * ts, ts)
 i = np.cos(2 * np.pi * t * fc) * 2 ** 14
 q = np.sin(2 * np.pi * t * fc) * 2 ** 14
-iq = 1 * (i + 1j * q)
+iq = 0.9 * (i + 1j * q)
 # iq = np.ones(i.shape)+1j*np.zeros(i.shape)
 
 # fc = int(300e3 / (fs / N)) * (fs / N)
@@ -754,9 +755,9 @@ def update():
         # sleep(5e-2)
         # for i in range(4):
         for i in range(1):
-            my_phaser.gpios.gpio_burst = 0
-            my_phaser.gpios.gpio_burst = 1
-            my_phaser.gpios.gpio_burst = 0
+            my_phaser._gpios.gpio_burst = 0
+            my_phaser._gpios.gpio_burst = 1
+            my_phaser._gpios.gpio_burst = 0
             data = my_sdr.rx()
         # N = win.fft_size
         # t = np.arange(N)/sample_rate
