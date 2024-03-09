@@ -68,15 +68,18 @@ try:
     print("Attempting to connect to CN0566 via ip:localhost...")
     my_phaser = CN0566(uri="ip:localhost")
     print("Found CN0566. Connecting to PlutoSDR via default IP address...")
-    my_sdr = ad9361(uri="ip:192.168.2.1")
-    print("PlutoSDR connected.")
+    # my_sdr = ad9361(uri="ip:192.168.2.1")
+    sdr_ip = "ip:192.168.2.1"
+    
 
 except:
     print("CN0566 on ip.localhost not found, connecting via ip:phaser.local...")
     my_phaser = CN0566(uri="ip:phaser.local")
     print("Found CN0566. Connecting to PlutoSDR via shared context...")
-    my_sdr = ad9361(uri="ip:phaser.local:50901")
-    print("Found SDR on shared phaser.local.")
+    sdr_ip = "ip:phaser.local:50901"
+    print("SDR on shared phaser.local.")
+my_sdr = ad9361(uri=sdr_ip)
+print("PlutoSDR connected.")
 
 def steer_angle_to_phase_diff(th,fc,d):
     return 2*np.pi*d*fc*np.sin(th*np.pi/180)/3e8
@@ -116,6 +119,16 @@ for i in range(0, len(gain_list)):
 # Aim the beam at boresight (zero degrees). Place HB100 right in front of array.
 my_phaser.set_beam_phase_diff(0.0)
 
+# Setup Raspberry Pi GPIO states
+try:
+    my_phaser._gpios.gpio_tx_sw = 0  # 0 = TX_OUT_2, 1 = TX_OUT_1
+    my_phaser._gpios.gpio_vctrl_1 = 1 # 1=Use onboard PLL/LO source  (0=disable PLL and VCO, and set switch to use external LO input)
+    my_phaser._gpios.gpio_vctrl_2 = 1 # 1=Send LO to transmit circuitry  (0=disable Tx path, and send LO to LO_OUT)
+except:
+    my_phaser.gpios.gpio_tx_sw = 0  # 0 = TX_OUT_2, 1 = TX_OUT_1
+    my_phaser.gpios.gpio_vctrl_1 = 1 # 1=Use onboard PLL/LO source  (0=disable PLL and VCO, and set switch to use external LO input)
+    my_phaser.gpios.gpio_vctrl_2 = 1 # 1=Send LO to transmit circuitry  (0=disable Tx path, and send LO to LO_OUT)
+
 #########
 # #  Configure SDR parameters. Start with the more involved settings, don't
 # # pay too much attention to these. They are covered in much more detail in
@@ -132,7 +145,8 @@ center_freq = 2.2e9
 signal_freq = 100e3
 num_slices = 200
 # fft_size = 1024 * 16
-fft_size = 1024 * 4
+# fft_size = 1024 * 4
+CPI_pulse = 4
 # fft_size = 1024*8
 img_array = np.zeros((num_slices, fft_size))
 
@@ -144,7 +158,7 @@ my_sdr.sample_rate = int(sample_rate)
 my_sdr.rx_lo = int(center_freq)  # set this to output_freq - (the freq of the HB100)
 # my_sdr.filter = "LTE20_MHz.ftr"  # Handy filter for fairly widdeband measurements
 my_sdr.rx_enabled_channels = [0, 1]  # enable Rx1 (voltage0) and Rx2 (voltage1)
-my_sdr.rx_buffer_size = int(fft_size)
+# my_sdr.rx_buffer_size = int(fft_size)
 my_sdr.gain_control_mode_chan0 = "manual"  # manual or slow_attack
 my_sdr.gain_control_mode_chan1 = "manual"  # manual or slow_attack
 my_sdr.rx_hardwaregain_chan0 = int(30)  # must be between -3 and 70
@@ -213,13 +227,65 @@ my_phaser.delay_start_en = 0  # delay start
 my_phaser.ramp_delay_en = 0  # delay between ramps.
 my_phaser.trig_delay_en = 0  # triangle delay
 # my_phaser.ramp_mode = "continuous_sawtooth"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
-my_phaser.ramp_mode = "continuous_triangular"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
-
+# my_phaser.ramp_mode = "continuous_triangular"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
+my_phaser.ramp_mode = "single_sawtooth_burst"
 my_phaser.sing_ful_tri = (
     0  # full triangle enable/disable -- this is used with the single_ramp_burst mode
 )
-my_phaser.tx_trig_en = 0  # start a ramp with TXdata
+my_phaser.tx_trig_en = 1  # start a ramp with TXdata
+# my_phaser.tx_trig_en = 0  # start a ramp with TXdata
 my_phaser.enable = 0  # 0 = PLL enable.  Write this last to update all the registers
+
+# %%
+# Configure TDD controller
+sdr_pins = adi.one_bit_adc_dac(sdr_ip)
+sdr_pins.gpio_tdd_ext_sync = True # If set to True, this enables external capture triggering using the L24N GPIO on the Pluto.  When set to false, an internal trigger pulse will be generated every second
+tdd = adi.tddn(sdr_ip)
+sdr_pins.gpio_phaser_enable = True
+tdd.enable = False         # disable TDD to configure the registers
+tdd.sync_external = True
+tdd.startup_delay_ms = 1
+tdd.frame_length_ms = ramp_time/1e3 + 0.2    # each GPIO toggle is spaced this far apart
+tdd.burst_count = CPI_pulse       # number of chirps in one continuous receive buffer
+# tdd.burst_count = num_chirps       # number of chirps in one continuous receive buffer
+
+tdd.out_channel0_enable = True
+tdd.out_channel0_polarity = False
+tdd.out_channel0_on_ms = 0.01    # each GPIO pulse will be 100us (0.6ms - 0.5ms).  And the first trigger will happen 0.5ms into the buffer
+tdd.out_channel0_off_ms = 0.2
+tdd.out_channel1_enable = True
+tdd.out_channel1_polarity = False
+tdd.out_channel1_on_ms = 0
+tdd.out_channel1_off_ms = 0.1
+tdd.out_channel2_enable = False
+tdd.enable = True
+
+frame_time = tdd.frame_length_ms*tdd.burst_count   # time in ms
+print("frame_time:  ", frame_time, "ms")
+buffer_time = 0
+power=12
+while frame_time > buffer_time:     
+    power=power+1
+    buffer_size = int(2**power) 
+    buffer_time = buffer_size/my_sdr.sample_rate*1000   # buffer time in ms
+    if power==23:
+        break     # max pluto buffer size is 2**23, but for tdd burst mode, set to 2**22
+print("buffer_size:", buffer_size)
+my_sdr.rx_buffer_size = buffer_size
+print("buffer_time:", buffer_time, " ms")  
+PRI = tdd.frame_length_ms / 1e3
+PRF = 1 / PRI
+fft_size = buffer_size
+# First ramp starts with some offset (as defined in the TDD section above)
+start_offset_time = tdd.out_channel0_on_ms/1e3
+
+# From start of each ramp, how many "good" points do we want?
+# For best freq linearity, stay away from the start of the ramps
+begin_offset_time = 0.02e-3
+good_ramp_time = ramp_time_s - begin_offset_time
+good_ramp_samples = int(good_ramp_time * sample_rate)
+start_offset_samples = int((start_offset_time+begin_offset_time)*sample_rate)
+
 
 # Print config
 print(
@@ -259,9 +325,13 @@ iq = 1 * (i + 1j * q)
 # iq_300k = 1 * (i + 1j * q)
 
 # Send data
-my_sdr._ctx.set_timeout(0)
-my_sdr.tx([iq * 0.5, iq])  # only send data to the 2nd channel (that's all we need)
-# my_sdr.tx([iq * 0, iq])
+# my_sdr._ctx.set_timeout(0)
+# my_sdr.tx([iq * 0.5, iq])  # only send data to the 2nd channel (that's all we need)
+# # my_sdr.tx([iq * 0, iq])
+my_sdr._ctx.set_timeout(30000)
+my_sdr._rx_init_channels() 
+# Send data
+my_sdr.tx([iq, iq])
 
 c = 3e8
 default_rf_bw = 500e6
@@ -318,6 +388,20 @@ class Window(QMainWindow):
         self.UiComponents()
         # showing all the widgets
         self.show()
+
+    def cleanup(self):
+        # Release resources here
+        my_sdr.tx_destroy_buffer()
+        print("Tx Buffer Destroyed!")
+
+        # # To disable TDD and revert to non-TDD (standard) mode
+        tdd.enable = False
+        sdr_pins.gpio_phaser_enable = False
+        tdd.out_channel1_polarity = not(sdr_pins.gpio_phaser_enable)
+        tdd.out_channel2_polarity = sdr_pins.gpio_phaser_enable
+        tdd.enable = True
+        tdd.enable = False
+        print("Disable TDD and revert to non-TDD (standard) mode")
 
     # method for components
     def UiComponents(self):
@@ -652,6 +736,7 @@ App = QApplication(sys.argv)
 
 # create the instance of our Window
 win = Window()
+App.aboutToQuit.connect(win.cleanup)
 index = 0
 
 ref = 2 ** 12
@@ -660,14 +745,18 @@ ref = 2 ** 12
 def update():
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
     fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
+    rx_bursts = np.zeros((CPI_pulse, good_ramp_samples), dtype=np.complex_)
     # win_funct = np.blackman(win.freq.size)
     win_funct = nuttall_window(win.freq.size)
     # for avgpulse in range(1):
     for ia, steer in enumerate(win.az):
         my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
         # sleep(5e-2)
-        for i in range(4):
-        # for i in range(1):
+        # for i in range(4):
+        for i in range(1):
+            my_phaser.gpios.gpio_burst = 0
+            my_phaser.gpios.gpio_burst = 1
+            my_phaser.gpios.gpio_burst = 0
             data = my_sdr.rx()
         # N = win.fft_size
         # t = np.arange(N)/sample_rate
@@ -675,6 +764,12 @@ def update():
         data_sum = data[0] + data[1]
         fxdata[ia,:] = 1 / N * np.fft.fft(data_sum * win_funct)
         frdata += 1 / N * np.fft.fft(data_sum * win_funct)
+        # for burst in range(num_bursts):
+        #     start_index = start_offset_samples + (burst) * fft_size
+        #     stop_index = start_index + good_ramp_samples
+        #     rx_bursts[burst] = sum_data[start_index:stop_index]
+        # fxdata[ia,:] = 1 / N * np.fft.fft(rx_bursts * win_funct,axis=1)
+        # frdata += 1 / N * np.fft.fft(rx_bursts * win_funct,axis=1)
     ampl = np.abs(fxdata)
     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
     win.img = np.roll( win.img, 1, axis=1 )
