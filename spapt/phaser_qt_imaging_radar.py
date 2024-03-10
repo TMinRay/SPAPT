@@ -46,7 +46,7 @@
 
 # Import libraries.
 from time import sleep
-
+import time
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
@@ -147,7 +147,7 @@ signal_freq = 100e3
 num_slices = 200
 # fft_size = 1024 * 16
 # fft_size = 1024 * 4
-CPI_pulse = 4
+CPI_pulse = 1
 # fft_size = 1024*8
 # img_array = np.zeros((num_slices, fft_size))
 
@@ -229,7 +229,8 @@ my_phaser.ramp_delay_en = 0  # delay between ramps.
 my_phaser.trig_delay_en = 0  # triangle delay
 # my_phaser.ramp_mode = "continuous_sawtooth"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
 # my_phaser.ramp_mode = "continuous_triangular"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
-my_phaser.ramp_mode = "single_sawtooth_burst"
+my_phaser.ramp_mode = "single_ramp_burst"
+# my_phaser.ramp_mode = "single_sawtooth_burst"
 my_phaser.sing_ful_tri = (
     0  # full triangle enable/disable -- this is used with the single_ramp_burst mode
 )
@@ -264,7 +265,7 @@ tdd.enable = True
 frame_time = tdd.frame_length_ms*tdd.burst_count   # time in ms
 print("frame_time:  ", frame_time, "ms")
 buffer_time = 0
-power=12
+power=8
 while frame_time > buffer_time:     
     power=power+1
     buffer_size = int(2**power) 
@@ -375,7 +376,8 @@ class Window(QMainWindow):
         # self.num_rows = 12
         self.fft_size = fft_size
         # self.az = np.arange(-30,31,15)
-        self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,3)))
+        # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,3)))
+        self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,2)))
         # self.az = np.zeros((5))
         Fs = sample_rate
         # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
@@ -742,7 +744,7 @@ index = 0
 
 ref = 2 ** 12
 # win.img = np.full((win.az.size, win.tframe.size, win.freq.size),-300)
-
+start_time = time.time()
 def update():
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
     fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
@@ -755,9 +757,9 @@ def update():
         # sleep(5e-2)
         # for i in range(4):
         for i in range(1):
-            my_phaser._gpios.gpio_burst = 0
-            my_phaser._gpios.gpio_burst = 1
-            my_phaser._gpios.gpio_burst = 0
+            my_phaser.gpios.gpio_burst = 0
+            my_phaser.gpios.gpio_burst = 1
+            my_phaser.gpios.gpio_burst = 0
             data = my_sdr.rx()
         # N = win.fft_size
         # t = np.arange(N)/sample_rate
@@ -785,6 +787,11 @@ def update():
         win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
     win.fanimage.setImage(win.fan - win.offset + win.r_cal, autoLevels=False)
     win.fft_curve.setData(win.plot_xaxis, pr)
+    global start_time
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Elapsed time: {elapsed_time*1e3} ms")
+    start_time = end_time
     # win.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
 
 
