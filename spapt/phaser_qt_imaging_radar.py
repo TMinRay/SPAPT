@@ -229,8 +229,8 @@ my_phaser.ramp_delay_en = 0  # delay between ramps.
 my_phaser.trig_delay_en = 0  # triangle delay
 # my_phaser.ramp_mode = "continuous_sawtooth"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
 # my_phaser.ramp_mode = "continuous_triangular"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
-my_phaser.ramp_mode = "single_ramp_burst"
-# my_phaser.ramp_mode = "single_sawtooth_burst"
+# my_phaser.ramp_mode = "single_ramp_burst"
+my_phaser.ramp_mode = "single_sawtooth_burst"
 my_phaser.sing_ful_tri = (
     0  # full triangle enable/disable -- this is used with the single_ramp_burst mode
 )
@@ -359,6 +359,12 @@ def get_img_trans(axx,axy):
 title_style = {"size": "20pt"}
 label_style = {"color": "#FFF", "font-size": "14pt"}
 
+def rotation_x(ang):
+    ang = np.deg2rad(ang)
+    return np.array([[1,0,0],[0,np.cos(ang),-np.sin(ang)],[0,np.sin(ang),np.cos(ang)]])
+def rotation_z(ang):
+    ang = np.deg2rad(ang)
+    return np.array([[np.cos(ang),-np.sin(ang),0],[np.sin(ang),np.cos(ang),0],[0,0,1]])
 
 def nuttall_window(N):
     a=[0.3635819,
@@ -372,7 +378,7 @@ class Window(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Interactive FFT")
-        self.setGeometry(20, 20, 1800, 1400)
+        self.setGeometry(20, 20, 1800, 2000)
         # self.num_rows = 12
         self.fft_size = fft_size
         # self.az = np.arange(-30,31,15)
@@ -387,10 +393,49 @@ class Window(QMainWindow):
         self.fan = np.full((self.az.size-5, self.freq.size),-300)
         self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
         self.offset = -300
+        tex,tey = np.meshgrid(np.arange(-30,31,2),np.arange(-20,21,1.5))
+        self.thetax = tex
+        self.thetay = tey
+        thetaaz = np.arctan2(np.sin(np.deg2rad(tex)),np.sin(np.deg2rad(tey)))
+        thetaele = np.arccos(np.sqrt(1-np.sin(np.deg2rad(tex))**2-np.sin(np.deg2rad(tey))**2))
+        self.gar = np.array([np.sin(thetaele)*np.sin(thetaaz), np.sin(thetaele)*np.cos(thetaaz), np.cos(thetaele)])
+        self.de = np.transpose( np.array([[0,1,0],[0,-1,0]]) )
+        # self.vol_ind = [208,228] # 3 5 m
+        self.vol_ind = [198,218] # 2 4 m
+        self.reset_fa()
+        # self.fabuf = np.full((*tex.shape, self.freq.size), 0)
+        # self.cur_ori = 0
+        self.cur_time = time.time()
+        self.platform_dps = 90
         # self.plot_dist = False
         self.UiComponents()
         # showing all the widgets
         self.show()
+
+        # coordinate system
+        #       X---ori(xy)
+        #       ^  /
+        #       | /
+        #       |/
+        #       z(in)------>y   steer(zy)
+        #================================
+        #       ^
+        #       |
+        #       thetax
+        #       |
+        #       |
+        #       o----thetay--->
+    def update_ori(self):
+        newt = time.time()
+        dt = newt - self.cur_time
+        self.cur_ori = (self.cur_ori + dt*self.platform_dps) % 360
+        self.cur_time = newt
+
+    def DBF(self,steer):
+        a0 = np.matmul( rotation_z(self.cur_ori) , np.matmul( rotation_x(-steer) , np.array([[0],[0],[1]])))[:,:,np.newaxis]
+        ar = self.gar - a0
+        element_phase = np.sum(ar[:,np.newaxis,:,:]*np.matmul( rotation_z(self.cur_ori) , self.de)[:,:,np.newaxis,np.newaxis],axis=0)
+        return element_phase
 
     def cleanup(self):
         # Release resources here
@@ -405,6 +450,12 @@ class Window(QMainWindow):
         tdd.enable = True
         tdd.enable = False
         print("Disable TDD and revert to non-TDD (standard) mode")
+
+    def reset_fa(self):
+        self.fabuf = np.full((*self.thetax.shape, self.freq.size), 0, dtype=np.complex_)
+        self.cur_ori = 0
+        self.vol_int = 0
+        print(self.cur_ori)
 
     # method for components
     def UiComponents(self):
@@ -431,6 +482,7 @@ class Window(QMainWindow):
 
         self.r_cal_check = QCheckBox("Toggle Range correction factor")
         font = self.r_cal_check.font()
+        font.setPointSize(20)
         self.r_cal_check.setFont(font)
 
         self.r_cal_check.stateChanged.connect(self.range_correction)
@@ -450,7 +502,6 @@ class Window(QMainWindow):
         self.range_res_label.setAlignment(Qt.AlignRight)
         self.range_res_label.setMinimumWidth(300)
 
-
         # RF bandwidth slider
         self.bw_slider = QSlider(Qt.Horizontal)
         self.bw_slider.setMinimum(100)
@@ -463,7 +514,20 @@ class Window(QMainWindow):
 
         self.set_bw = QPushButton("Set RF Bandwidth")
         self.set_bw.pressed.connect(self.set_range_res)
+        font = self.set_bw.font()
+        font.setPointSize(15)
+        self.set_bw.setFont(font)
 
+        self.clear_fa = QPushButton("Reset 2-D imaging integration.")
+        self.clear_fa.pressed.connect(self.reset_fa)
+        font = self.clear_fa.font()
+        font.setPointSize(15)
+        self.clear_fa.setFont(font)
+
+        self.integral_num = QLabel("{:d} scans integrated.".format(self.vol_int))
+        font = self.integral_num.font()
+        font.setPointSize(15)
+        self.integral_num.setFont(font)
 
         AZLayout = QHBoxLayout()
         self.az_input = []
@@ -506,6 +570,23 @@ class Window(QMainWindow):
         self.fanaxs.getAxis("left").setTickFont(font)
         self.fanaxs.addItem(self.fanimage)
 
+        self.vol_wid = pg.GraphicsLayoutWidget()
+        self.volplot = []
+        self.volitem = []
+        dist=self.get_dist()
+        for ip in range(2):
+            self.volplot.append( self.vol_wid.addPlot() )
+        # self.waterfall = self.gr_wid.addPlot()
+            self.volitem.append( pg.ImageItem() )
+            self.volplot[ip].addItem(self.volitem[ip])
+            self.set_vol_Quads(self.volitem[ip])
+            self.volplot[ip].setRange(xRange=(self.thetay[0,0], self.thetay[-1,0] ), yRange=(self.thetax[0,0],self.thetax[0,-1]))
+            self.volplot[ip].setTitle("SAR imaging @ {:.1f} m".format(float(dist[self.vol_ind[ip]])), **title_style)
+            self.volplot[ip].setLabel("left", "thetax", units="<html><sup>o</sup></html>", **label_style)
+            self.volplot[ip].setLabel("bottom", "thetay", units="<html><sup>o</sup></html>", **label_style)
+            self.volplot[ip].getAxis("bottom").setTickFont(font)
+            self.volplot[ip].getAxis("left").setTickFont(font)
+
 
         # Waterfall plot
         # self.waterfall = pg.PlotWidget()
@@ -531,6 +612,8 @@ class Window(QMainWindow):
             self.waterfall[ip].getAxis("bottom").setTickFont(font)
             self.waterfall[ip].getAxis("left").setTickFont(font)
         self.imageitem.append( self.fanimage )
+        for ip in range(2):
+            self.imageitem.append( self.volitem[ip] )
         # self.waterfall.setTickFont
         bar = pg.ColorBarItem(
             values = (-50, 5),
@@ -555,9 +638,12 @@ class Window(QMainWindow):
         btlayout.addWidget(self.range_res_label, 2, 1)
         btlayout.addWidget(self.bw_slider, 2, 0)
         btlayout.addWidget(self.set_bw, 3, 0, 1, 2)
+        btlayout.addWidget(self.clear_fa, 4, 0)
+        btlayout.addWidget(self.integral_num, 4, 1)
         layout.addLayout(btlayout, 4, 2, 4, 1)
-        layout.addLayout(AZLayout, 8, 0, 1, 5)
-        layout.addWidget(self.gr_wid, 11, 0, 18, 5)
+        layout.addWidget(self.vol_wid, 8, 0, 4, 5)
+        layout.addLayout(AZLayout, 12, 0, 1, 5)
+        layout.addWidget(self.gr_wid, 13, 0, 18, 5)
 
         # self.br_wid = pg.GraphicsLayoutWidget()
         # self.cb = self.br_wid.addPlot()
@@ -569,6 +655,13 @@ class Window(QMainWindow):
         widget.setLayout(layout)
         # setting this widget as central widget of the main window
         self.setCentralWidget(widget)
+
+    def set_vol_Quads(self, im):
+        tr = QtGui.QTransform()
+        trans_para = get_img_trans(self.thetay[:,0],self.thetax[0,:])
+        tr.translate(trans_para[0], trans_para[1])
+        tr.scale(trans_para[2], trans_para[3])
+        im.setTransform(tr)
 
     def set_Quads(self, im, plot_az = False):
         tr = QtGui.QTransform()
@@ -748,6 +841,8 @@ start_time = time.time()
 def update():
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
     fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
+    fadata = np.zeros((*win.thetax.shape, win.freq.size),dtype=np.complex_)
+    ath=np.abs(win.az[-1]-win.az[-2])/1.5
     rx_bursts = np.zeros((CPI_pulse, good_ramp_samples), dtype=np.complex_)
     # win_funct = np.blackman(win.freq.size)
     win_funct = nuttall_window(good_ramp_samples)
@@ -756,16 +851,24 @@ def update():
         my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
         # sleep(5e-2)
         # for i in range(4):
-        for i in range(1):
-            my_phaser.gpios.gpio_burst = 0
-            my_phaser.gpios.gpio_burst = 1
-            my_phaser.gpios.gpio_burst = 0
-            data = my_sdr.rx()
+        my_phaser.gpios.gpio_burst = 0
+        my_phaser.gpios.gpio_burst = 1
+        my_phaser.gpios.gpio_burst = 0
+        data = my_sdr.rx()
+        win.update_ori()
+        
+        element_ph = win.DBF(steer)
+        data_ar = np.array(data)
+        data_ar = 1 / win.fft_size * np.fft.fft( data_ar[:,start_offset_samples:start_offset_samples+good_ramp_samples] * win_funct, n=win.fft_size)
+        fainc = np.sum(data_ar[:,np.newaxis,np.newaxis,:]*np.exp(-1j*element_ph[:,:,:,np.newaxis]),axis=0)
+        update_pixel = np.abs(element_ph[0,:,:])<np.deg2rad(ath)
+        fadata[update_pixel,:]=fainc[update_pixel,:]
         # N = win.fft_size
         # t = np.arange(N)/sample_rate
         # data = [np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t)),np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t))]
-        data_sum = data[0] + data[1]
-        fxdata[ia,:] = 1 / N * np.fft.fft( data_sum[start_offset_samples:start_offset_samples+good_ramp_samples] * win_funct, n=win.fft_size)
+        # data_sum = data[0] + data[1]
+        # fxdata[ia,:] = 1 / win.fft_size * np.fft.fft( data_sum[start_offset_samples:start_offset_samples+good_ramp_samples] * win_funct, n=win.fft_size)
+        fxdata[ia,:] = data_ar[0]+data_ar[1]
         frdata += fxdata[ia,:]
         # for burst in range(num_bursts):
         #     start_index = start_offset_samples + (burst) * fft_size
@@ -773,6 +876,9 @@ def update():
         #     rx_bursts[burst] = sum_data[start_index:stop_index]
         # fxdata[ia,:] = 1 / N * np.fft.fft(rx_bursts * win_funct,axis=1)
         # frdata += 1 / N * np.fft.fft(rx_bursts * win_funct,axis=1)
+    win.fabuf += fadata
+    win.vol_int += 1
+    win.integral_num.setText("{:d} scans integrated.".format(win.vol_int))
     ampl = np.abs(fxdata)
     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
     win.img = np.roll( win.img, 1, axis=1 )
@@ -786,6 +892,11 @@ def update():
     for ip in range(5):
         win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
     win.fanimage.setImage(win.fan - win.offset + win.r_cal, autoLevels=False)
+    volcut = np.array([win.fabuf[:,:,win.vol_ind[0]],win.fabuf[:,:,win.vol_ind[1]]])
+    volcut = np.abs(volcut)
+    volcut = 20 * np.log10(volcut / ref + 10 ** -20)
+    win.volitem[0].setImage(volcut[0,:] - win.offset + win.r_cal[0,win.vol_ind[0]], autoLevels=False)
+    win.volitem[1].setImage(volcut[1,:] - win.offset + win.r_cal[0,win.vol_ind[1]], autoLevels=False)
     win.fft_curve.setData(win.plot_xaxis, pr)
     global start_time
     end_time = time.time()
