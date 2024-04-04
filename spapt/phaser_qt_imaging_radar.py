@@ -394,7 +394,7 @@ class Window(QMainWindow):
         self.fan = np.full((self.az.size-5, self.freq.size),-300)
         self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
         self.offset = -300
-        tex,tey = np.meshgrid(np.arange(-30,31,1),np.arange(-25,26,1))
+        tex,tey = np.meshgrid(np.arange(-30,31,0.5),np.arange(-29,30,0.5))
         self.thetax = tex
         self.thetay = tey
         thetaaz = np.arctan2(np.sin(np.deg2rad(tex)),np.sin(np.deg2rad(tey)))
@@ -407,7 +407,7 @@ class Window(QMainWindow):
         # self.fabuf = np.full((*tex.shape, self.freq.size), 0)
         # self.cur_ori = 0
         self.cur_time = time.time()
-        self.platform_dps = 20
+        self.platform_dps = 10
         # self.plot_dist = False
         self.UiComponents()
         # showing all the widgets
@@ -429,7 +429,7 @@ class Window(QMainWindow):
     def update_ori(self):
         newt = time.time()
         dt = newt - self.cur_time
-        self.cur_ori = (self.cur_ori + dt*self.platform_dps) % 360
+        self.cur_ori = (self.cur_ori - dt*self.platform_dps) % 360
         self.cur_time = newt
 
     def DBF(self,steer):
