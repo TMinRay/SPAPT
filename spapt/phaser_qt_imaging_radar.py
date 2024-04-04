@@ -750,7 +750,7 @@ def update():
     fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
     rx_bursts = np.zeros((CPI_pulse, good_ramp_samples), dtype=np.complex_)
     # win_funct = np.blackman(win.freq.size)
-    win_funct = nuttall_window(win.freq.size)
+    win_funct = nuttall_window(good_ramp_samples)
     # for avgpulse in range(1):
     for ia, steer in enumerate(win.az):
         my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
@@ -765,8 +765,8 @@ def update():
         # t = np.arange(N)/sample_rate
         # data = [np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t)),np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t))]
         data_sum = data[0] + data[1]
-        fxdata[ia,:] = 1 / N * np.fft.fft(data_sum * win_funct)
-        frdata += 1 / N * np.fft.fft(data_sum * win_funct)
+        fxdata[ia,:] = 1 / N * np.fft.fft( data_sum[start_offset_samples:start_offset_samples+good_ramp_samples] * win_funct, n=win.fft_size)
+        frdata += fxdata[ia,:]
         # for burst in range(num_bursts):
         #     start_index = start_offset_samples + (burst) * fft_size
         #     stop_index = start_index + good_ramp_samples
