@@ -508,15 +508,12 @@ class Window(QMainWindow):
 
         # RF bandwidth slider
         self.bw_slider = QSlider(Qt.Horizontal)
-        # self.bw_slider.setMinimum(100)
-        # self.bw_slider.setMaximum(500)
-        self.bw_slider.setMinimum(50)
-        self.bw_slider.setMaximum(250)
+        self.bw_slider.setMinimum(100)
+        self.bw_slider.setMaximum(500)
         self.bw_slider.setValue(int(default_rf_bw / 1e6))
         self.bw_slider.setTickInterval(50)
         self.bw_slider.setTickPosition(QSlider.TicksBelow)
         self.bw_slider.valueChanged.connect(self.get_range_res)
-        
 
         self.set_bw = QPushButton("Set RF Bandwidth")
         self.set_bw.pressed.connect(self.set_range_res)
