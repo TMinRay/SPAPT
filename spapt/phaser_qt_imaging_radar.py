@@ -393,7 +393,7 @@ class Window(QMainWindow):
         self.fan = np.full((self.az.size-5, self.freq.size),-300)
         self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
         self.offset = -300
-        tex,tey = np.meshgrid(np.arange(-30,31,2),np.arange(-20,21,1.5))
+        tex,tey = np.meshgrid(np.arange(-30,31,1),np.arange(-25,26,1))
         self.thetax = tex
         self.thetay = tey
         thetaaz = np.arctan2(np.sin(np.deg2rad(tex)),np.sin(np.deg2rad(tey)))
@@ -406,7 +406,7 @@ class Window(QMainWindow):
         # self.fabuf = np.full((*tex.shape, self.freq.size), 0)
         # self.cur_ori = 0
         self.cur_time = time.time()
-        self.platform_dps = 90
+        self.platform_dps = 20
         # self.plot_dist = False
         self.UiComponents()
         # showing all the widgets
@@ -452,9 +452,11 @@ class Window(QMainWindow):
         print("Disable TDD and revert to non-TDD (standard) mode")
 
     def reset_fa(self):
-        self.fabuf = np.full((*self.thetax.shape, self.freq.size), 0, dtype=np.complex_)
+        self.fabuf = np.full((*self.thetax.shape, 2), 0, dtype=np.complex_)
         self.cur_ori = 0
         self.vol_int = 0
+        newt = time.time()
+        self.cur_time = newt
         print(self.cur_ori)
 
     # method for components
@@ -841,7 +843,7 @@ start_time = time.time()
 def update():
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
     fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
-    fadata = np.zeros((*win.thetax.shape, win.freq.size),dtype=np.complex_)
+    fadata = np.zeros((*win.thetax.shape, 2),dtype=np.complex_)
     ath=np.abs(win.az[-1]-win.az[-2])/1.5
     rx_bursts = np.zeros((CPI_pulse, good_ramp_samples), dtype=np.complex_)
     # win_funct = np.blackman(win.freq.size)
@@ -860,7 +862,7 @@ def update():
         element_ph = win.DBF(steer)
         data_ar = np.array(data)
         data_ar = 1 / win.fft_size * np.fft.fft( data_ar[:,start_offset_samples:start_offset_samples+good_ramp_samples] * win_funct, n=win.fft_size)
-        fainc = np.sum(data_ar[:,np.newaxis,np.newaxis,:]*np.exp(-1j*element_ph[:,:,:,np.newaxis]),axis=0)
+        fainc = np.sum(data_ar[:,np.newaxis,[win.vol_ind]]*np.exp(-1j*element_ph[:,:,:,np.newaxis]),axis=0)
         update_pixel = np.abs(element_ph[0,:,:])<np.deg2rad(ath)
         fadata[update_pixel,:]=fainc[update_pixel,:]
         # N = win.fft_size
@@ -892,11 +894,12 @@ def update():
     for ip in range(5):
         win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
     win.fanimage.setImage(win.fan - win.offset + win.r_cal, autoLevels=False)
-    volcut = np.array([win.fabuf[:,:,win.vol_ind[0]],win.fabuf[:,:,win.vol_ind[1]]])
+    # volcut = np.array([win.fabuf[:,:,win.vol_ind[0]],win.fabuf[:,:,win.vol_ind[1]]])
+    volcut = win.fabuf
     volcut = np.abs(volcut)
     volcut = 20 * np.log10(volcut / ref + 10 ** -20)
-    win.volitem[0].setImage(volcut[0,:] - win.offset + win.r_cal[0,win.vol_ind[0]], autoLevels=False)
-    win.volitem[1].setImage(volcut[1,:] - win.offset + win.r_cal[0,win.vol_ind[1]], autoLevels=False)
+    win.volitem[0].setImage(volcut[:,:,0] - win.offset + win.r_cal[0,win.vol_ind[0]], autoLevels=False)
+    win.volitem[1].setImage(volcut[:,:,1] - win.offset + win.r_cal[0,win.vol_ind[1]], autoLevels=False)
     win.fft_curve.setData(win.plot_xaxis, pr)
     global start_time
     end_time = time.time()
