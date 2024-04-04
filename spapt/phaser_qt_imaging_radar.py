@@ -378,7 +378,8 @@ class Window(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Interactive FFT")
-        self.setGeometry(20, 20, 1800, 2000)
+        # self.setGeometry(20, 20, 1800, 2000)
+        self.setGeometry(20, 20, 972, 1440)
         # self.num_rows = 12
         self.fft_size = fft_size
         # self.az = np.arange(-30,31,15)
@@ -502,12 +503,15 @@ class Window(QMainWindow):
         font.setPointSize(15)
         self.range_res_label.setFont(font)
         self.range_res_label.setAlignment(Qt.AlignRight)
-        self.range_res_label.setMinimumWidth(300)
+        # self.range_res_label.setMinimumWidth(300)
+        self.range_res_label.setMinimumWidth(150)
 
         # RF bandwidth slider
         self.bw_slider = QSlider(Qt.Horizontal)
-        self.bw_slider.setMinimum(100)
-        self.bw_slider.setMaximum(500)
+        # self.bw_slider.setMinimum(100)
+        # self.bw_slider.setMaximum(500)
+        self.bw_slider.setMinimum(50)
+        self.bw_slider.setMaximum(250)
         self.bw_slider.setValue(int(default_rf_bw / 1e6))
         self.bw_slider.setTickInterval(50)
         self.bw_slider.setTickPosition(QSlider.TicksBelow)
@@ -546,7 +550,9 @@ class Window(QMainWindow):
 
         # FFT plot
         self.fft_plot = pg.plot()
-        self.fft_plot.setMinimumWidth(400)
+        # self.fft_plot.setMinimumWidth(400)
+        # self.fft_plot.setMaximumHeight(150)
+        self.fft_plot.setMinimumWidth(200)
         self.fft_plot.setMaximumHeight(150)
         self.fft_curve = self.fft_plot.plot(self.freq, pen="y", width=6)
 
@@ -560,8 +566,10 @@ class Window(QMainWindow):
         
         self.fan_wid = pg.GraphicsLayoutWidget()
         self.fanaxs = self.fan_wid.addPlot()
-        self.fan_wid.setMinimumWidth(1000)
-        self.fan_wid.setMinimumHeight(350)
+        # self.fan_wid.setMinimumWidth(1000)
+        # self.fan_wid.setMinimumHeight(350)
+        self.fan_wid.setMinimumWidth(400)
+        self.fan_wid.setMaximumHeight(400)
         self.fanimage = pg.ImageItem()
         self.set_Quads(self.fanimage, plot_az=True)
         # self.fanaxs.setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
@@ -593,6 +601,7 @@ class Window(QMainWindow):
         # Waterfall plot
         # self.waterfall = pg.PlotWidget()
         self.gr_wid = pg.GraphicsLayoutWidget()
+        self.gr_wid.setMinimumHeight(400)
         self.waterfall = []
         self.imageitem = []
         for ip in range(5):
