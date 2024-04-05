@@ -59,6 +59,8 @@ from PyQt5.QtWidgets import *
 from pyqtgraph.Qt import QtCore, QtGui
 import pyqtgraph as pg
 import sys
+import socket
+
 # from phaser_functions import load_hb100_cal, spec_est
 # from scipy import signal
 
@@ -366,6 +368,28 @@ def rotation_z(ang):
     ang = np.deg2rad(ang)
     return np.array([[np.cos(ang),-np.sin(ang),0],[np.sin(ang),np.cos(ang),0],[0,0,1]])
 
+def com(HOST, PORT, msg):
+    try:
+        # Create a socket object
+        s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # Set the socket timeout
+        s.settimeout(TIMEOUT)
+        s.connect((HOST, PORT))
+        s.sendall(msg)
+        # Receive data from the server
+        data = s.recv(1024)
+        # print("Received:", data.decode())
+        s.close()
+    except socket.timeout:
+        print("Timeout: No data received within {} seconds.".format(TIMEOUT))
+
+    except ConnectionRefusedError:
+        print("Connection refused: Unable to connect to the server.")
+
+    except Exception as e:
+        print("An error occurred:", e)
+    return data
+
 def nuttall_window(N):
     a=[0.3635819,
     0.4891775,
@@ -378,6 +402,9 @@ class Window(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Interactive FFT")
+        self.HOST = '192.168.1.14'  # IP address of the windows server
+        self.PORT = 7727        # Port number of the server
+        self.TIMEOUT = 2        # Timeout value in seconds
         # self.setGeometry(20, 20, 1800, 2000)
         self.setGeometry(20, 20, 972, 1440)
         # self.num_rows = 12
@@ -403,7 +430,9 @@ class Window(QMainWindow):
         self.de = np.transpose( np.array([[0,1,0],[0,-1,0]]) )
         # self.vol_ind = [208,228] # 3 5 m
         self.vol_ind = [198,218] # 2 4 m
+        self.use_real_ori = False
         self.reset_fa()
+
         # self.fabuf = np.full((*tex.shape, self.freq.size), 0)
         # self.cur_ori = 0
         self.cur_time = time.time()
@@ -413,30 +442,45 @@ class Window(QMainWindow):
         # showing all the widgets
         self.show()
 
-        # coordinate system
-        #       X---ori(xy)
-        #       ^  /
-        #       | /
-        #       |/
-        #       z(in)------>y   steer(zy)
-        #================================
-        #       ^
-        #       |
-        #       thetax
-        #       |
-        #       |
-        #       o----thetay--->
+    # coordinate system
+    #       X---ori(xy)
+    #       ^  /
+    #       | /
+    #       |/
+    #       z(in)------>y   steer(zy)
+    #================================
+    #       ^
+    #       |
+    #       thetax
+    #       |
+    #       |
+    #       o----thetay--->
+
     def update_ori(self):
         newt = time.time()
         dt = newt - self.cur_time
-        self.cur_ori = (self.cur_ori - dt*self.platform_dps) % 360
+        if use_real_ori:
+            self.cur_ori = self.get_ori_from_solo()
+        else:
+            self.cur_ori = (self.cur_ori - dt*self.platform_dps) % 360
         self.cur_time = newt
+
+    def change_ori_mode(self):
+        if use_real_ori:
+            use_real_ori = False
+        else:
+            use_real_ori = True
+            self.ori_bt.setText("Use software orientation.")
 
     def DBF(self,steer):
         a0 = np.matmul( rotation_z(self.cur_ori) , np.matmul( rotation_x(-steer) , np.array([[0],[0],[1]])))[:,:,np.newaxis]
         ar = self.gar - a0
         element_phase = np.sum(ar[:,np.newaxis,:,:]*np.matmul( rotation_z(self.cur_ori) , self.de)[:,:,np.newaxis,np.newaxis],axis=0)
         return element_phase
+
+    def get_ori_from_solo(self):
+        posstr = com(self.HOST, self.PORT, b'cn0566 Request solo position.')
+        return float(posstr.decode().split(',')[1])
 
     def cleanup(self):
         # Release resources here
@@ -517,20 +561,36 @@ class Window(QMainWindow):
 
         self.set_bw = QPushButton("Set RF Bandwidth")
         self.set_bw.pressed.connect(self.set_range_res)
-        font = self.set_bw.font()
-        font.setPointSize(15)
-        self.set_bw.setFont(font)
+        # font = self.set_bw.font()
+        # font.setPointSize(15)
+        # self.set_bw.setFont(font)
 
         self.clear_fa = QPushButton("Reset 2-D imaging integration.")
         self.clear_fa.pressed.connect(self.reset_fa)
-        font = self.clear_fa.font()
-        font.setPointSize(15)
-        self.clear_fa.setFont(font)
+        # font = self.clear_fa.font()
+        # font.setPointSize(15)
+        # self.clear_fa.setFont(font)
 
         self.integral_num = QLabel("{:d} scans integrated.".format(self.vol_int))
-        font = self.integral_num.font()
-        font.setPointSize(15)
-        self.integral_num.setFont(font)
+        # font = self.integral_num.font()
+        # font.setPointSize(15)
+        # self.integral_num.setFont(font)
+
+        self.ori_bt = QPushButton("Use real orientation.")
+        self.ori_bt.pressed.connect(self.change_ori_mode)
+        # font = self.ori_bt.font()
+        # font.setPointSize(15)
+        # self.ori_bt.setFont(font)
+
+        self.ori_dis = QLabel("current orientation {:.3f} <html><sup>o</sup></html>".format(self.cur_ori))
+        # font = self.ori_dis.font()
+        # font.setPointSize(15)
+        # self.ori_dis.setFont(font)
+
+        for qtres in [set_bw, clear_fa, integral_num, ori_bt, ori_dis]:
+            font = qtres.font()
+            font.setPointSize(15)
+            qtres.setFont(font)
 
         AZLayout = QHBoxLayout()
         self.az_input = []
@@ -646,8 +706,10 @@ class Window(QMainWindow):
         btlayout.addWidget(self.range_res_label, 2, 1)
         btlayout.addWidget(self.bw_slider, 2, 0)
         btlayout.addWidget(self.set_bw, 3, 0, 1, 2)
-        btlayout.addWidget(self.clear_fa, 4, 0)
-        btlayout.addWidget(self.integral_num, 4, 1)
+        btlayout.addWidget(self.ori_bt, 4, 0)
+        btlayout.addWidget(self.ori_dis, 4, 1)
+        btlayout.addWidget(self.clear_fa, 5, 0)
+        btlayout.addWidget(self.integral_num, 5, 1)
         layout.addLayout(btlayout, 4, 2, 4, 1)
         layout.addWidget(self.vol_wid, 8, 0, 4, 5)
         layout.addLayout(AZLayout, 12, 0, 1, 5)
