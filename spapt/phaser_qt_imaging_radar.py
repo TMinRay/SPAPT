@@ -368,7 +368,7 @@ def rotation_z(ang):
     ang = np.deg2rad(ang)
     return np.array([[np.cos(ang),-np.sin(ang),0],[np.sin(ang),np.cos(ang),0],[0,0,1]])
 
-def com(HOST, PORT, msg):
+def com(HOST, PORT, TIMEOUT, msg):
     try:
         # Create a socket object
         s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -402,7 +402,7 @@ class Window(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Interactive FFT")
-        self.HOST = '192.168.1.14'  # IP address of the windows server
+        self.HOST = 'localhost'  # IP address of the windows server
         self.PORT = 7727        # Port number of the server
         self.TIMEOUT = 2        # Timeout value in seconds
         # self.setGeometry(20, 20, 1800, 2000)
@@ -411,7 +411,8 @@ class Window(QMainWindow):
         self.fft_size = fft_size
         # self.az = np.arange(-30,31,15)
         # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,3)))
-        self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,2)))
+        # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,2)))
+        self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,5)))
         # self.az = np.zeros((5))
         Fs = sample_rate
         # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
@@ -421,7 +422,7 @@ class Window(QMainWindow):
         self.fan = np.full((self.az.size-5, self.freq.size),-300)
         self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
         self.offset = -300
-        tex,tey = np.meshgrid(np.arange(-30,31,0.5),np.arange(-29,30,0.5))
+        tex,tey = np.meshgrid(np.arange(-30,31,1),np.arange(-29,30,1))
         self.thetax = tex
         self.thetay = tey
         thetaaz = np.arctan2(np.sin(np.deg2rad(tex)),np.sin(np.deg2rad(tey)))
@@ -429,7 +430,8 @@ class Window(QMainWindow):
         self.gar = np.array([np.sin(thetaele)*np.sin(thetaaz), np.sin(thetaele)*np.cos(thetaaz), np.cos(thetaele)])
         self.de = np.transpose( np.array([[0,1,0],[0,-1,0]]) )
         # self.vol_ind = [208,228] # 3 5 m
-        self.vol_ind = [198,218] # 2 4 m
+        # self.vol_ind = [198,218] # 2 4 m
+        self.vol_ind = [198,208] # 2 3 m
         self.use_real_ori = False
         self.reset_fa()
 
@@ -459,17 +461,17 @@ class Window(QMainWindow):
     def update_ori(self):
         newt = time.time()
         dt = newt - self.cur_time
-        if use_real_ori:
+        if self.use_real_ori:
             self.cur_ori = self.get_ori_from_solo()
         else:
             self.cur_ori = (self.cur_ori - dt*self.platform_dps) % 360
         self.cur_time = newt
 
     def change_ori_mode(self):
-        if use_real_ori:
-            use_real_ori = False
+        if self.use_real_ori:
+            self.use_real_ori = False
         else:
-            use_real_ori = True
+            self.use_real_ori = True
             self.ori_bt.setText("Use software orientation.")
 
     def DBF(self,steer):
@@ -479,8 +481,8 @@ class Window(QMainWindow):
         return element_phase
 
     def get_ori_from_solo(self):
-        posstr = com(self.HOST, self.PORT, b'cn0566 Request solo position.')
-        return float(posstr.decode().split(',')[1])
+        posstr = com(self.HOST, self.PORT, self.TIMEOUT, b'cn0566 Request solo position.')
+        return ((22.5-float(posstr.decode().split(',')[1]))%360)
 
     def cleanup(self):
         # Release resources here
@@ -587,7 +589,7 @@ class Window(QMainWindow):
         # font.setPointSize(15)
         # self.ori_dis.setFont(font)
 
-        for qtres in [set_bw, clear_fa, integral_num, ori_bt, ori_dis]:
+        for qtres in [self.set_bw, self.clear_fa, self.integral_num, self.ori_bt, self.ori_dis]:
             font = qtres.font()
             font.setPointSize(15)
             qtres.setFont(font)
@@ -638,6 +640,7 @@ class Window(QMainWindow):
         self.fanaxs.addItem(self.fanimage)
 
         self.vol_wid = pg.GraphicsLayoutWidget()
+        self.vol_wid.setMinimumHeight(450)
         self.volplot = []
         self.volitem = []
         dist=self.get_dist()
@@ -658,7 +661,7 @@ class Window(QMainWindow):
         # Waterfall plot
         # self.waterfall = pg.PlotWidget()
         self.gr_wid = pg.GraphicsLayoutWidget()
-        self.gr_wid.setMinimumHeight(400)
+        # self.gr_wid.setMinimumHeight(200)
         self.waterfall = []
         self.imageitem = []
         for ip in range(5):
@@ -949,6 +952,7 @@ def update():
     win.fabuf += fadata
     win.vol_int += 1
     win.integral_num.setText("{:d} scans integrated.".format(win.vol_int))
+    win.ori_dis.setText("current orientation {:.3f} <html><sup>o</sup></html>".format(win.cur_ori))
     ampl = np.abs(fxdata)
     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
     win.img = np.roll( win.img, 1, axis=1 )

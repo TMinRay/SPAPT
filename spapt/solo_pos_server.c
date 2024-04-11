@@ -4,9 +4,11 @@
 #include <sys/time.h>
 #include <string.h>
 #include <stdbool.h>
-// #include "Soloist.h"
+#include "Soloist.h"
 // Main include file
 
+
+ // gcc '.\solo_pos_server.c' -o solo_pos_server.exe -L'D:\RadarChallenge\Samples\CLibrary\Lib'  -I'D:\RadarChallenge\Samples\CLibrary\Include' -lSoloistC -lws2_32 
 
 // This function will print whatever the latest error was
 void PrintError();
@@ -21,19 +23,19 @@ int main() {
     struct timeval tv;
     struct tm* timeinfo;
 
-    // SoloistHandle* handles;
-    // // Handle to give access to Soloist
-    // SoloistHandle handle = NULL;
-    // DWORD handleCount = 0;
-    // DOUBLE positionFeedback;
-    // printf("Connecting to Soloist.\n");
-    // if(!SoloistConnect(&handles, &handleCount)) { PrintError(); goto cleanup; }
-    // if(handleCount != 1) {
-    //     printf("Please make sure only one controller is configured\n");
-    //     return -1;
-    // }
-    // handle = handles[0];
-    // if(!SoloistMotionEnable(handle)) { PrintError(); goto cleanup; }
+    SoloistHandle* handles;
+    // Handle to give access to Soloist
+    SoloistHandle handle = NULL;
+    DWORD handleCount = 0;
+    DOUBLE positionFeedback;
+    printf("Connecting to Soloist.\n");
+    if(!SoloistConnect(&handles, &handleCount)) { PrintError(); goto cleanup; }
+    if(handleCount != 1) {
+        printf("Please make sure only one controller is configured\n");
+        return -1;
+    }
+    handle = handles[0];
+    if(!SoloistMotionEnable(handle)) { PrintError(); goto cleanup; }
 
     // Initialize Winsock
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
@@ -110,10 +112,10 @@ int main() {
             printf("Quit!!\n");
         }
         memset(buffer, '\0', sizeof(buffer));
-        // if(!SoloistStatusGetItem(handle, STATUSITEM_PositionFeedback, &positionFeedback)) { PrintError(); goto cleanup; }
-        // sprintf(buffer, "%.2f", positionFeedback);
-        sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d.%06d, %.3f,\n", year, month, day, hour, minute, second, microsecond,  13.56979);
-        // sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d.%06d, %f\n", year, month, day, hour, minute, second, microsecond,  positionFeedback);
+        if(!SoloistStatusGetItem(handle, STATUSITEM_PositionFeedback, &positionFeedback)) { PrintError(); goto cleanup; }
+        sprintf(buffer, "%.2f", positionFeedback);
+        // sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d.%06d, %.3f,\n", year, month, day, hour, minute, second, microsecond,  13.56979);
+        sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d.%06d, %.3f,\n", year, month, day, hour, minute, second, microsecond,  positionFeedback);
 
         send(clientSocket, buffer, sizeof(buffer), 0);
 
@@ -124,22 +126,22 @@ int main() {
     closesocket(listenSocket);
     WSACleanup();
 
-// cleanup:
-//     if(handleCount > 0) {
-//         if(!SoloistMotionDisable(handle)) { PrintError(); }
-//         if(!SoloistDisconnect(handles)) { PrintError(); }
-//     }
+cleanup:
+    if(handleCount > 0) {
+        if(!SoloistMotionDisable(handle)) { PrintError(); }
+        if(!SoloistDisconnect(handles)) { PrintError(); }
+    }
 
-// #ifdef _DEBUG
-//     printf("Press ENTER to exit...\n");
-//     getchar();
-// #endif
+#ifdef _DEBUG
+    printf("Press ENTER to exit...\n");
+    getchar();
+#endif
 
     return 0;
 }
 
-// void PrintError() {
-//     CHAR data[1024];
-//     SoloistGetLastErrorString(data, 1024);
-//     printf("Error : %s\n", data);
-// }
+void PrintError() {
+    CHAR data[1024];
+    SoloistGetLastErrorString(data, 1024);
+    printf("Error : %s\n", data);
+}
