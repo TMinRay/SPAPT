@@ -322,7 +322,7 @@ label_style = {"color": "#FFF", "font-size": "12pt"}
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("CN0566 FMCW SAR")
+        self.setWindowTitle("CN0566 FMCW Imaging Radar")
         self.HOST = 'localhost'  # IP address of the windows server
         self.PORT = 7727        # Port number of the server
         self.TIMEOUT = 2        # Timeout value in seconds
@@ -334,8 +334,6 @@ class Window(QMainWindow):
         self.fan_az = np.arange(-30,30.5,1.25)  # desired beamforming angle (hybrid)
         self.wf_az = np.arange(-15,16,15)       # desired waterfall display angle
         self.wfid = np.zeros(self.wf_az.size,dtype=np.int_) # desired waterfall angle index
-        for ix in range(self.wf_az.size):
-            self.wfid[ix] = self.get_wfid(self.wf_az[ix])
 
         self.freq = np.arange(0,sample_rate,sample_rate/self.fft_size) # frequency axis
                                         # won't fftshift in following processing
@@ -353,9 +351,8 @@ class Window(QMainWindow):
         self.gar = np.array([np.sin(thetaele)*np.sin(thetaaz), np.sin(thetaele)*np.cos(thetaaz), np.cos(thetaele)])
         self.fan_ar = np.array([np.zeros(self.fan_az.size), np.sin(np.deg2rad(self.fan_az)), np.cos(np.deg2rad(self.fan_az))])
         self.de = np.transpose( np.array([[0,1,0],[0,-1,0]]) )  # effective element location in unit of wavelength
-        # self.vol_ind = [208,228] # 3 5 m
-        # self.vol_ind = [198,218] # 2 4 m
-        self.vol_ind = [198,208] # 2 3 m
+        self.vol_r = [2,3] # 2 3 m
+        self.vol_ind = [198,208] # 2 3 m just a default will be overwrite while UiComponents initialize
         self.use_real_ori = False
         self.reset_fa()
 
@@ -507,7 +504,6 @@ class Window(QMainWindow):
             self.az_input.append(QLineEdit())
             self.az_input[ip].setAlignment(Qt.AlignCenter)
             self.az_input[ip].setStyleSheet("background-color: #444; color: #fff; border: 1px solid #666;")
-            self.az_input[ip].setText('{:d}'.format(int(self.wf_az[ip])))
             AZLayout.addWidget(self.az_input[ip])
             self.az_input[ip].setFont(font)
             def update_az_wrapper(text, ip=ip):
@@ -517,7 +513,7 @@ class Window(QMainWindow):
         # FFT plot
         self.fft_plot = pg.plot()
         self.fft_plot.setMinimumWidth(200)
-        self.fft_plot.setMaximumHeight(150)
+        self.fft_plot.setMinimumHeight(100)
         self.fft_curve = self.fft_plot.plot(self.freq, pen="y", width=6)
 
         self.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
@@ -541,6 +537,18 @@ class Window(QMainWindow):
         self.fanaxs.getAxis("bottom").setTickFont(font)
         self.fanaxs.getAxis("left").setTickFont(font)
         self.fanaxs.addItem(self.fanimage)
+
+        RLayout = QHBoxLayout()
+        self.r_input = []
+        for ip in range(2):
+            self.r_input.append(QLineEdit())
+            self.r_input[ip].setAlignment(Qt.AlignCenter)
+            self.r_input[ip].setStyleSheet("background-color: #444; color: #fff; border: 1px solid #666;")
+            RLayout.addWidget(self.r_input[ip])
+            self.r_input[ip].setFont(font)
+            def update_r_wrapper(text, ip=ip):
+                self.update_r(text, ip)
+            self.r_input[ip].textChanged.connect(update_r_wrapper)
 
         self.vol_wid = pg.GraphicsLayoutWidget()
         self.vol_wid.setMinimumHeight(450)
@@ -596,6 +604,11 @@ class Window(QMainWindow):
         self.bar_wid.addItem(bar, 0, 0, 1, 5)
         self.bar_wid.setMaximumHeight(80)
 
+        for ip in range(3):
+            self.az_input[ip].setText('{:d}'.format(int(self.wf_az[ip])))
+        for ip in range(2):
+            self.r_input[ip].setText('{:d}'.format(int(self.vol_r[ip])))
+
         layout.addWidget(suptitle_label, 0, 0, 1, 5)
         layout.addWidget(self.fan_wid, 1, 0, 4, 1)
         btlayout = QGridLayout()
@@ -620,7 +633,8 @@ class Window(QMainWindow):
         vol_page = QWidget(self)
         vol_layout = QGridLayout()
         vol_page.setLayout(vol_layout)
-        vol_layout.addWidget(self.vol_wid, 0,0,18,5)
+        vol_layout.addLayout(RLayout,0,0,1,5)
+        vol_layout.addWidget(self.vol_wid, 1,0,18,5)
         font = tab.tabBar().font()
         font.setPointSize(20)
         tab.tabBar().setFont(font)
@@ -661,9 +675,26 @@ class Window(QMainWindow):
         else:
             print(is_float(text))
 
+    @pyqtSlot(str)
+    def update_r(self, text, ix):
+        # print(text)
+        dist = self.get_dist()
+        if is_float(text):
+            self.vol_ind[ix] = self.get_vol_rid(float(text))
+            self.vol_r[ix] = dist[self.vol_ind[ix]]
+            self.volplot[ix].setTitle("SAR imaging @ {:.1f} m".format(float(self.vol_r[ix])), **title_style)
+        else:
+            print(is_float(text))
+
     def get_wfid(self, input_az):
         angdiff = np.abs(self.fan_az-input_az)
         output_ind = np.where(angdiff == np.min(angdiff))[0]
+        return output_ind[0]
+
+    def get_vol_rid(self, input_r):
+        dist = self.get_dist()
+        rdiff = np.abs(dist-input_r)
+        output_ind = np.where(rdiff == np.min(rdiff))[0]
         return output_ind[0]
 
     def get_range_res(self):
