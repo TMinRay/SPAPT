@@ -85,9 +85,6 @@ print("SDR on shared phaser.local.")
 my_sdr = ad9361(uri=sdr_ip)
 print("PlutoSDR connected.")
 
-def steer_angle_to_phase_diff(th,fc,d):
-    return 2*np.pi*d*fc*np.sin(th*np.pi/180)/3e8
-
 my_phaser.sdr = my_sdr  # Set my_phaser.sdr
 
 time.sleep(0.5)
@@ -274,6 +271,9 @@ my_sdr.tx([iq, iq * 0])  # only send data to the 1st channel (that's all we need
                          # same time the base band signal is not correctly send out 
                          # double check the recevied signal is at correct frequency
 
+def steer_angle_to_phase_diff(th,fc,d):
+    return 2*np.pi*d*fc*np.sin(th*np.pi/180)/3e8
+
 def get_img_trans(axx,axy):
     dx = (axx[-1]-axx[0])/axx.size
     dy = (axy[-1]-axy[0])/axy.size
@@ -329,7 +329,6 @@ class Window(QMainWindow):
         self.TIMEOUT = 2        # Timeout value in seconds
         self.setGeometry(20, 20, 1706, 960)
         # self.setGeometry(20, 20, 972, 1440)
-        # self.num_rows = 12
         self.fft_size = fft_size
         # self.az = np.arange(-30,31,15)
         # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,3)))
@@ -338,7 +337,8 @@ class Window(QMainWindow):
         # self.az = np.zeros((5))
         Fs = sample_rate
         # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
-        self.freq = np.arange(0,Fs,Fs/self.fft_size)
+        self.freq = np.arange(0,Fs,Fs/self.fft_size) # won't fftshift in following processing
+                                        # should be fine while signal frequency is positive.
         self.tframe = np.arange(50)
         self.clear_img()
         self.fan = np.full((self.az.size-5, self.freq.size),-300)
@@ -357,8 +357,6 @@ class Window(QMainWindow):
         self.use_real_ori = False
         self.reset_fa()
 
-        # self.fabuf = np.full((*tex.shape, self.freq.size), 0)
-        # self.cur_ori = 0
         self.cur_time = time.time()
         self.platform_dps = 10
         # self.plot_dist = False
@@ -442,7 +440,6 @@ class Window(QMainWindow):
         font.setPointSize(24)
         suptitle_label.setFont(font)
         suptitle_label.setAlignment(Qt.AlignHCenter)  # | Qt.AlignVCenter)
-        
 
         # Check boxes
         self.x_axis_check = QCheckBox("Toggle Range/Frequency x-axis")
@@ -458,7 +455,6 @@ class Window(QMainWindow):
         self.r_cal_check.setFont(font)
 
         self.r_cal_check.stateChanged.connect(self.range_correction)
-
 
         # Range resolution
         # Changes with the RF BW slider
@@ -711,51 +707,16 @@ class Window(QMainWindow):
             % (bw / 1e6, c / (2 * bw))
         )
 
-    # def get_water_levels(self):
-    #     """ Updates the waterfall intensity levels
-    #     Returns:
-    #         None
-    #     """
-    #     if self.low_slider.value() > self.high_slider.value():
-    #         self.low_slider.setValue(self.high_slider.value())
-    #     self.low_label.setText("LOW LEVEL: %0.0f" % (self.low_slider.value()))
-    #     self.high_label.setText("HIGH LEVEL: %0.0f" % (self.high_slider.value()))
-
-    # def get_steer_angle(self):
-    #     """ Updates the steering angle readout
-    #     Returns:
-    #         None
-    #     """
-    #     self.steer_label.setText("%0.0f DEG" % (self.steer_slider.value()))
-    #     phase_delta = (
-    #         2
-    #         * 3.14159
-    #         * 10.25e9
-    #         * 0.014
-    #         * np.sin(np.radians(self.steer_slider.value()))
-    #         / (3e8)
-    #     )
-    #     my_phaser.set_beam_phase_diff(np.degrees(phase_delta))
-
     def set_range_res(self):
         """ Sets the RF bandwidth
         Returns:
             None
         """
-        # global slope
         bw = self.bw_slider.value() * 1e6
         slope = bw / ramp_time_s
-        dist = (freq - signal_freq) * c / (4 * slope)
+        dist = (self.freq - signal_freq) * c / (4 * slope)
         print("New slope: %0.2fMHz/s" % (slope / 1e6))
-        # if self.x_axis_check.isChecked() == True:
-        #     print("Range axis")
-        #     # self.plot_dist = True
-        #     range_x = (100e3) * c / (4 * slope)
-        #     self.fft_plot.setXRange(0, range_x)
-        # else:
-        #     print("Frequency axis")
-        #     # self.plot_dist = False
-        #     self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
+
         my_phaser.freq_dev_range = int(bw / 4)  # frequency deviation range in Hz
         my_phaser.freq_dev_step = int(
             bw / num_steps/ 4
@@ -780,23 +741,10 @@ class Window(QMainWindow):
         Returns:
             None
         """
-        # global slope
-        # plot_state = win.fft_plot.getViewBox().state
-        # if state == QtCore.Qt.Checked:
-        #     print("Range axis")
-        #     plot_dist = True
-        #     range_x = (100e3) * c / (4 * slope)
-        #     self.fft_plot.setXRange(0, range_x)
-        # else:
-        #     print("Frequency axis")
-        #     plot_dist = False
-        #     self.fft_plot.setXRange(100e3, 200e3)
         dist = self.get_dist()
-        # print("New slope: %0.2fMHz/s" % (slope / 1e6))
         if self.x_axis_check.isChecked() == True:
             print("Range axis")
-            # self.plot_dist = True
-            range_x = np.max(self.freq - signal_freq) * c / (4 * slope)
+            # range_x = np.max(dist)
             self.plot_xaxis = dist
             self.fft_plot.setTitle("Received Signal - Range", **title_style)
             self.fft_plot.setLabel("bottom", text="Range", units="m")
@@ -812,7 +760,6 @@ class Window(QMainWindow):
             self.fanaxs.setLabel("left", "Range", units="m")
         else:
             print("Frequency axis")
-            # self.plot_dist = False
             self.plot_xaxis = self.freq
             # self.fft_plot.setXRange(0, 200e3)
             self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
@@ -843,7 +790,6 @@ def is_float(value):
         print(value)
         return False
 
-
 # create pyqt5 app
 App = QApplication(sys.argv)
 
@@ -853,7 +799,6 @@ App.aboutToQuit.connect(win.cleanup)
 index = 0
 
 ref = 2 ** 12
-# win.img = np.full((win.az.size, win.tframe.size, win.freq.size),-300)
 start_time = time.time()
 def update():
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
@@ -931,8 +876,6 @@ timer.start(0)
 
 # start the app
 sys.exit(App.exec())
-
-
 
 # Clean up / close connections
 del my_sdr
