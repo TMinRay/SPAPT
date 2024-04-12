@@ -405,8 +405,8 @@ class Window(QMainWindow):
         self.HOST = 'localhost'  # IP address of the windows server
         self.PORT = 7727        # Port number of the server
         self.TIMEOUT = 2        # Timeout value in seconds
-        # self.setGeometry(20, 20, 1800, 2000)
-        self.setGeometry(20, 20, 972, 1440)
+        self.setGeometry(20, 20, 1706, 960)
+        # self.setGeometry(20, 20, 972, 1440)
         # self.num_rows = 12
         self.fft_size = fft_size
         # self.az = np.arange(-30,31,15)
@@ -470,6 +470,7 @@ class Window(QMainWindow):
     def change_ori_mode(self):
         if self.use_real_ori:
             self.use_real_ori = False
+            self.ori_bt.setText("Use real orientation.")
         else:
             self.use_real_ori = True
             self.ori_bt.setText("Use software orientation.")
@@ -514,24 +515,24 @@ class Window(QMainWindow):
         layout = QGridLayout()
 
         # Control Panel
-        control_label = QLabel("CN0566 FMCW Imaging Radar")
-        font = control_label.font()
-        font.setPointSize(28)
-        control_label.setFont(font)
-        control_label.setAlignment(Qt.AlignHCenter)  # | Qt.AlignVCenter)
+        suptitle_label = QLabel("CN0566 FMCW Imaging Radar")
+        font = suptitle_label.font()
+        font.setPointSize(24)
+        suptitle_label.setFont(font)
+        suptitle_label.setAlignment(Qt.AlignHCenter)  # | Qt.AlignVCenter)
         
 
         # Check boxes
         self.x_axis_check = QCheckBox("Toggle Range/Frequency x-axis")
         font = self.x_axis_check.font()
-        font.setPointSize(20)
+        font.setPointSize(17)
         self.x_axis_check.setFont(font)
 
         self.x_axis_check.stateChanged.connect(self.change_x_axis)
 
         self.r_cal_check = QCheckBox("Toggle Range correction factor")
         font = self.r_cal_check.font()
-        font.setPointSize(20)
+        font.setPointSize(17)
         self.r_cal_check.setFont(font)
 
         self.r_cal_check.stateChanged.connect(self.range_correction)
@@ -627,6 +628,8 @@ class Window(QMainWindow):
         self.fanaxs = self.fan_wid.addPlot()
         # self.fan_wid.setMinimumWidth(1000)
         # self.fan_wid.setMinimumHeight(350)
+        # self.fan_wid.setMinimumWidth(400)
+        # self.fan_wid.setMaximumHeight(400)
         self.fan_wid.setMinimumWidth(400)
         self.fan_wid.setMaximumHeight(400)
         self.fanimage = pg.ImageItem()
@@ -689,7 +692,7 @@ class Window(QMainWindow):
         bar = pg.ColorBarItem(
             values = (-50, 5),
             colorMap='CET-L4',
-            label='horizontal color bar',
+            # label='horizontal color bar',
             limits = (None, None),
             rounding=0.1,
             orientation = 'h',
@@ -697,27 +700,47 @@ class Window(QMainWindow):
         )
         # bar.setImageItem( self.imageitem, insert_in=self.waterfall )
         bar.setImageItem( self.imageitem )
-        self.gr_wid.addItem(bar, 1, 0, 1, 5)
+        self.bar_wid = pg.GraphicsLayoutWidget()
+        self.bar_wid.addItem(bar, 0, 0, 1, 5)
+        self.bar_wid.setMaximumHeight(80)
 
-        layout.addWidget(control_label, 0, 0, 1, 5)
+        layout.addWidget(suptitle_label, 0, 0, 1, 5)
 
-        layout.addWidget(self.fft_plot, 1, 0, 2, 5)
-        layout.addWidget(self.fan_wid, 4, 0, 4, 2)
+        # layout.addWidget(self.fft_plot, 1, 0, 2, 5)
+        layout.addWidget(self.fan_wid, 1, 0, 4, 2)
         btlayout = QGridLayout()
-        btlayout.addWidget(self.x_axis_check, 0, 0)
-        btlayout.addWidget(self.r_cal_check, 0, 1)
-        btlayout.addWidget(self.range_res_label, 2, 1)
-        btlayout.addWidget(self.bw_slider, 2, 0)
-        btlayout.addWidget(self.set_bw, 3, 0, 1, 2)
-        btlayout.addWidget(self.ori_bt, 4, 0)
-        btlayout.addWidget(self.ori_dis, 4, 1)
-        btlayout.addWidget(self.clear_fa, 5, 0)
-        btlayout.addWidget(self.integral_num, 5, 1)
-        layout.addLayout(btlayout, 4, 2, 4, 1)
-        layout.addWidget(self.vol_wid, 8, 0, 4, 5)
-        layout.addLayout(AZLayout, 12, 0, 1, 5)
-        layout.addWidget(self.gr_wid, 13, 0, 18, 5)
+        btlayout.addWidget(self.fft_plot, 0, 0, 3, 2)
+        btlayout.addWidget(self.x_axis_check, 3, 0)
+        btlayout.addWidget(self.r_cal_check, 3, 1)
+        btlayout.addWidget(self.range_res_label, 4, 1)
+        btlayout.addWidget(self.bw_slider, 4, 0)
+        btlayout.addWidget(self.set_bw, 5, 0, 1, 2)
+        btlayout.addWidget(self.ori_bt, 6, 0)
+        btlayout.addWidget(self.ori_dis, 6, 1)
+        btlayout.addWidget(self.clear_fa, 7, 0)
+        btlayout.addWidget(self.integral_num, 7, 1)
+        layout.addLayout(btlayout, 1, 2, 4, 1)
 
+        tab = QTabWidget()
+        waterfall_page = QWidget(self)
+        wf_layout = QGridLayout()
+        waterfall_page.setLayout(wf_layout)
+        wf_layout.addLayout(AZLayout,0,0,1,5)
+        wf_layout.addWidget(self.gr_wid, 1,0,18,5)
+        vol_page = QWidget(self)
+        vol_layout = QGridLayout()
+        vol_page.setLayout(vol_layout)
+        vol_layout.addWidget(self.vol_wid, 0,0,18,5)
+        font = tab.tabBar().font()
+        font.setPointSize(20)  # Change the font size to whatever you desire
+        tab.tabBar().setFont(font)
+        tab.tabBar().setExpanding(True)
+        tab.addTab(vol_page, 'SAR imaging')
+        tab.addTab(waterfall_page, 'waterfall')
+        tab.setTabShape(QTabWidget.Triangular)
+
+        layout.addWidget(tab,8,0,18,5)
+        layout.addWidget(self.bar_wid, 26, 0, 1, 5)
         # self.br_wid = pg.GraphicsLayoutWidget()
         # self.cb = self.br_wid.addPlot()
         # self.cb.addItem(bar)
