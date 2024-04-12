@@ -45,7 +45,6 @@
 # trimmed down about as much as possible.
 
 # Import libraries.
-from time import sleep
 import time
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -61,26 +60,28 @@ import pyqtgraph as pg
 import sys
 import socket
 
-# from phaser_functions import load_hb100_cal, spec_est
-# from scipy import signal
-
 # First try to connect to a locally connected CN0566. On success, connect,
 # on failure, connect to remote CN0566
 
-try:
-    print("Attempting to connect to CN0566 via ip:localhost...")
-    my_phaser = CN0566(uri="ip:localhost")
-    print("Found CN0566. Connecting to PlutoSDR via default IP address...")
-    # my_sdr = ad9361(uri="ip:192.168.2.1")
-    sdr_ip = "ip:192.168.2.1"
-    
+# try:
+#     print("Attempting to connect to CN0566 via ip:localhost...")
+#     my_phaser = CN0566(uri="ip:localhost")
+#     print("Found CN0566. Connecting to PlutoSDR via default IP address...")
+#     # my_sdr = ad9361(uri="ip:192.168.2.1")
+#     sdr_ip = "ip:192.168.2.1"
 
-except:
-    print("CN0566 on ip.localhost not found, connecting via ip:phaser.local...")
-    my_phaser = CN0566(uri="ip:phaser.local")
-    print("Found CN0566. Connecting to PlutoSDR via shared context...")
-    sdr_ip = "ip:phaser.local:50901"
-    print("SDR on shared phaser.local.")
+# except:
+#     print("CN0566 on ip.localhost not found, connecting via ip:phaser.local...")
+#     my_phaser = CN0566(uri="ip:phaser.local")
+#     print("Found CN0566. Connecting to PlutoSDR via shared context...")
+#     sdr_ip = "ip:phaser.local:50901"
+#     print("SDR on shared phaser.local.")
+
+print("Connecting CN0566 via ip:phaser.local...")
+my_phaser = CN0566(uri="ip:phaser.local")
+print("Found CN0566. Connecting to PlutoSDR via shared context...")
+sdr_ip = "ip:phaser.local:50901"
+print("SDR on shared phaser.local.")
 my_sdr = ad9361(uri=sdr_ip)
 print("PlutoSDR connected.")
 
@@ -89,7 +90,7 @@ def steer_angle_to_phase_diff(th,fc,d):
 
 my_phaser.sdr = my_sdr  # Set my_phaser.sdr
 
-sleep(0.5)
+time.sleep(0.5)
 
 # By default device_mode is "rx"
 my_phaser.configure(device_mode="rx")
@@ -97,29 +98,17 @@ my_phaser.load_channel_cal()
 my_phaser.load_gain_cal("gain_cal_val.pkl")
 my_phaser.load_phase_cal("phase_cal_val.pkl")
 
-# try:
-#     my_phaser.SignalFreq = load_hb100_cal()
-#     print("Found signal freq file, ", my_phaser.SignalFreq)
-# except:
-#     my_phaser.SignalFreq = 10.409e9
-#     print("No signal freq file found, setting to 10.409 GHz")
-
-
 # Configure CN0566 parameters.
 #     ADF4159 and ADAR1000 array attributes are exposed directly, although normally
 #     accessed through other methods.
 
-
-# Set all antenna elements to half scale - a typical HB100 will have plenty
-# of signal power.
-
+# Set all antenna elements to 84/ 128.
 gain_list = [84] * 8  # (64 is about half scale)
 # gain_list = [8, 34, 84, 127, 127, 84, 34, 8]  # Blackman taper
 for i in range(0, len(gain_list)):
-    # my_phaser.set_chan_gain(i, gain_list[i], apply_cal=False)
     my_phaser.set_chan_gain(i, gain_list[i])
 
-# Aim the beam at boresight (zero degrees). Place HB100 right in front of array.
+# Reset pointing of the beam at boresight (zero degrees).
 my_phaser.set_beam_phase_diff(0.0)
 
 # Setup Raspberry Pi GPIO states
@@ -133,6 +122,7 @@ except:
     my_phaser.gpios.gpio_vctrl_2 = 1 # 1=Send LO to transmit circuitry  (0=disable Tx path, and send LO to LO_OUT)
 
 #########
+# # this part cause restart of phaser trouble (need reboot)
 # #  Configure SDR parameters. Start with the more involved settings, don't
 # # pay too much attention to these. They are covered in much more detail in
 # # Software Defined Radio for Engineers.
@@ -143,15 +133,11 @@ except:
 # ].value = "0"  # Disable pin control so spi can move the states
 # my_sdr._ctrl.debug_attrs["initialize"].value = "1"
 #########
+c = 3e8
 sample_rate = 0.6e6
 center_freq = 2.2e9
 signal_freq = 100e3
-num_slices = 200
-# fft_size = 1024 * 16
-# fft_size = 1024 * 4
 CPI_pulse = 1
-# fft_size = 1024*8
-# img_array = np.zeros((num_slices, fft_size))
 
 # Create radio.
 # This script is for Pluto Rev C, dual channel setup
@@ -172,41 +158,6 @@ my_sdr.tx_enabled_channels = [0, 1]
 my_sdr.tx_cyclic_buffer = True  # must set cyclic buffer to true for the tdd burst mode.  Otherwise Tx will turn on and off randomly
 my_sdr.tx_hardwaregain_chan0 = -88  # must be between 0 and -88
 my_sdr.tx_hardwaregain_chan1 = -0  # must be between 0 and -88
-
-
-# my_sdr.rx_enabled_channels = [0, 1]  # enable Rx1 (voltage0) and Rx2 (voltage1)
-# my_sdr._rxadc.set_kernel_buffers_count(1)  # No stale buffers to flush
-# rx = my_sdr._ctrl.find_channel("voltage0")
-# rx.attrs["quadrature_tracking_en"].value = "1"  # enable quadrature tracking
-# # Make sure the Tx channels are attenuated (or off) and their freq is far away from Rx
-# # this is a negative number between 0 and -88
-# my_sdr.tx_hardwaregain_chan0 = int(-80)
-# my_sdr.tx_hardwaregain_chan1 = int(-80)
-
-
-# # These parameters are more closely related to analog radio design
-# # and are what you would adjust to change the IFs, signal bandwidths, sample rate, etc.
-# #
-# # Sample rate is set to 30Msps,
-# # for a total of 30MHz of bandwidth (quadrature sampling)
-# # Filter is 20MHz LTE, so you get a bit less than 20MHz of usable
-# # bandwidth.
-
-# my_sdr.sample_rate = int(30e6)  # Sampling rate
-# my_sdr.rx_buffer_size = int(1024)  # Number of samples per buffer
-# my_sdr.rx_rf_bandwidth = int(10e6)  # Analog bandwidth
-
-# # Manually control gain - in most applications, you want to enable AGC to keep
-# # to adapt to changing conditions. Since we're taking quasi-quantitative measurements,
-# # we want to set the gain to a fixed value.
-# my_sdr.gain_control_mode_chan0 = "manual"  # DISable AGC
-# my_sdr.gain_control_mode_chan1 = "manual"
-# my_sdr.rx_hardwaregain_chan0 = 0  # dB
-# my_sdr.rx_hardwaregain_chan1 = 0  # dB
-
-# my_sdr.rx_lo = int(2.2e9)  # Downconvert by 2GHz  # Receive Freq
-# my_sdr.filter = "LTE20_MHz.ftr"  # Handy filter for fairly widdeband measurements
-
 
 # Configure the ADF4159 Rampling PLL
 output_freq = 10e9 + center_freq
@@ -229,15 +180,11 @@ my_phaser.delay_clk = "PFD"  # can be 'PFD' or 'PFD*CLK1'
 my_phaser.delay_start_en = 0  # delay start
 my_phaser.ramp_delay_en = 0  # delay between ramps.
 my_phaser.trig_delay_en = 0  # triangle delay
-# my_phaser.ramp_mode = "continuous_sawtooth"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
-# my_phaser.ramp_mode = "continuous_triangular"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
-# my_phaser.ramp_mode = "single_ramp_burst"
-my_phaser.ramp_mode = "single_sawtooth_burst"
+my_phaser.ramp_mode = "single_sawtooth_burst"  # ramp_mode can be:  "disabled", "continuous_sawtooth", "continuous_triangular", "single_sawtooth_burst", "single_ramp_burst"
 my_phaser.sing_ful_tri = (
     0  # full triangle enable/disable -- this is used with the single_ramp_burst mode
 )
 my_phaser.tx_trig_en = 1  # start a ramp with TXdata
-# my_phaser.tx_trig_en = 0  # start a ramp with TXdata
 my_phaser.enable = 0  # 0 = PLL enable.  Write this last to update all the registers
 
 # %%
@@ -251,7 +198,6 @@ tdd.sync_external = True
 tdd.startup_delay_ms = 1
 tdd.frame_length_ms = ramp_time/1e3 + 0.2    # each GPIO toggle is spaced this far apart
 tdd.burst_count = CPI_pulse       # number of chirps in one continuous receive buffer
-# tdd.burst_count = num_chirps       # number of chirps in one continuous receive buffer
 
 tdd.out_channel0_enable = True
 tdd.out_channel0_polarity = False
@@ -290,7 +236,6 @@ good_ramp_time = ramp_time_s - begin_offset_time
 good_ramp_samples = int(good_ramp_time * sample_rate)
 start_offset_samples = int((start_offset_time+begin_offset_time)*sample_rate)
 
-
 # Print config
 print(
     """
@@ -321,49 +266,23 @@ t = np.arange(0, N * ts, ts)
 i = np.cos(2 * np.pi * t * fc) * 2 ** 14
 q = np.sin(2 * np.pi * t * fc) * 2 ** 14
 iq = 0.9 * (i + 1j * q)
-# iq = np.ones(i.shape)+1j*np.zeros(i.shape)
 
-# fc = int(300e3 / (fs / N)) * (fs / N)
-# i = np.cos(2 * np.pi * t * fc) * 2 ** 14
-# q = np.sin(2 * np.pi * t * fc) * 2 ** 14
-# iq_300k = 1 * (i + 1j * q)
-
-# Send data
-# my_sdr._ctx.set_timeout(0)
-# my_sdr.tx([iq * 0.5, iq])  # only send data to the 2nd channel (that's all we need)
-# # my_sdr.tx([iq * 0, iq])
 my_sdr._ctx.set_timeout(30000)
 my_sdr._rx_init_channels() 
 # Send data
-my_sdr.tx([iq, iq])
-
-c = 3e8
-default_rf_bw = 500e6
-N_frame = fft_size
-freq = np.arange(0,fs,fs/int(N_frame))
-# freq = np.linspace(-fs / 2, fs / 2, int(N_frame))
-
-slope = BW / ramp_time_s
-dist = (freq - signal_freq) * c / (4 * slope)
-# dist = freq * c / (4 * slope)
-
-xdata = freq
-
-
-font = QtGui.QFont()
-font.setPointSize(16)
+my_sdr.tx([iq, iq * 0])  # only send data to the 1st channel (that's all we need)
+                         # same time the base band signal is not correctly send out 
+                         # double check the recevied signal is at correct frequency
 
 def get_img_trans(axx,axy):
     dx = (axx[-1]-axx[0])/axx.size
     dy = (axy[-1]-axy[0])/axy.size
     return axx[0], axy[0], dx, dy
 
-title_style = {"size": "20pt"}
-label_style = {"color": "#FFF", "font-size": "14pt"}
-
 def rotation_x(ang):
     ang = np.deg2rad(ang)
     return np.array([[1,0,0],[0,np.cos(ang),-np.sin(ang)],[0,np.sin(ang),np.cos(ang)]])
+
 def rotation_z(ang):
     ang = np.deg2rad(ang)
     return np.array([[np.cos(ang),-np.sin(ang),0],[np.sin(ang),np.cos(ang),0],[0,0,1]])
@@ -397,6 +316,9 @@ def nuttall_window(N):
     0.0106411]
     x=np.arange(N)/N*np.pi
     return a[0] - a[1]*np.cos(2*x) + a[2]*np.cos(4*x) - a[3]*np.cos(6*x)
+
+title_style = {"size": "20pt"}
+label_style = {"color": "#FFF", "font-size": "14pt"}
 
 class Window(QMainWindow):
     def __init__(self):
@@ -746,7 +668,6 @@ class Window(QMainWindow):
         # self.cb.addItem(bar)
 
         # layout.addWidget(self.br_wid, 19, 0, 1, 5)
-        # # self.img_array = np.zeros((num_slices, fft_size))
 
         widget.setLayout(layout)
         # setting this widget as central widget of the main window
