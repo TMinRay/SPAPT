@@ -144,7 +144,6 @@ my_sdr.sample_rate = int(sample_rate)
 my_sdr.rx_lo = int(center_freq)  # set this to output_freq - (the freq of the HB100)
 # my_sdr.filter = "LTE20_MHz.ftr"  # Handy filter for fairly widdeband measurements
 my_sdr.rx_enabled_channels = [0, 1]  # enable Rx1 (voltage0) and Rx2 (voltage1)
-# my_sdr.rx_buffer_size = int(fft_size)
 my_sdr.gain_control_mode_chan0 = "manual"  # manual or slow_attack
 my_sdr.gain_control_mode_chan1 = "manual"  # manual or slow_attack
 my_sdr.rx_hardwaregain_chan0 = int(30)  # must be between -3 and 70
@@ -323,44 +322,37 @@ label_style = {"color": "#FFF", "font-size": "12pt"}
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Interactive FFT")
+        self.setWindowTitle("CN0566 FMCW SAR")
         self.HOST = 'localhost'  # IP address of the windows server
         self.PORT = 7727        # Port number of the server
         self.TIMEOUT = 2        # Timeout value in seconds
         self.setGeometry(20, 20, 1706, 960)
         # self.setGeometry(20, 20, 972, 1440)
         self.fft_size = fft_size
-        # self.az = np.arange(-30,31,15)
-        # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,3)))
-        # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,2)))
-        # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,5)))
-        self.az = np.arange(-30,31,5)
-        # self.az = np.arange(-30,31,15)
-        self.fan_az = np.arange(-30,30.5,1.25)
-        # self.az = np.arange(-30,31,30)
-        # self.fan_az = np.arange(-30,30.5,0.5)
-        self.wf_az = np.arange(-15,16,15)
-        self.wfid = np.zeros(self.wf_az.size,dtype=np.int_)
+
+        self.az = np.arange(-30,31,5)           # exact analog beamforming angle
+        self.fan_az = np.arange(-30,30.5,1.25)  # desired beamforming angle (hybrid)
+        self.wf_az = np.arange(-15,16,15)       # desired waterfall display angle
+        self.wfid = np.zeros(self.wf_az.size,dtype=np.int_) # desired waterfall angle index
         for ix in range(self.wf_az.size):
             self.wfid[ix] = self.get_wfid(self.wf_az[ix])
-        # self.az = np.zeros((5))
-        Fs = sample_rate
-        # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
-        self.freq = np.arange(0,Fs,Fs/self.fft_size) # won't fftshift in following processing
+
+        self.freq = np.arange(0,sample_rate,sample_rate/self.fft_size) # frequency axis
+                                        # won't fftshift in following processing
                                         # should be fine while signal frequency is positive.
-        self.tframe = np.arange(50)
+        self.tframe = np.arange(50)             # waterfall record frames
         self.clear_img()
         self.fan = np.full((self.fan_az.size, self.freq.size),-300)
         self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
         self.offset = -300
         tex,tey = np.meshgrid(np.arange(-30,31,1),np.arange(-29,30,1))
-        self.thetax = tex
-        self.thetay = tey
+        self.thetax = tex               # desired SAR angle in x
+        self.thetay = tey               # desired SAR angle in y
         thetaaz = np.arctan2(np.sin(np.deg2rad(tex)),np.sin(np.deg2rad(tey)))
         thetaele = np.arccos(np.sqrt(1-np.sin(np.deg2rad(tex))**2-np.sin(np.deg2rad(tey))**2))
         self.gar = np.array([np.sin(thetaele)*np.sin(thetaaz), np.sin(thetaele)*np.cos(thetaaz), np.cos(thetaele)])
         self.fan_ar = np.array([np.zeros(self.fan_az.size), np.sin(np.deg2rad(self.fan_az)), np.cos(np.deg2rad(self.fan_az))])
-        self.de = np.transpose( np.array([[0,1,0],[0,-1,0]]) )
+        self.de = np.transpose( np.array([[0,1,0],[0,-1,0]]) )  # effective element location in unit of wavelength
         # self.vol_ind = [208,228] # 3 5 m
         # self.vol_ind = [198,218] # 2 4 m
         self.vol_ind = [198,208] # 2 3 m
@@ -369,9 +361,7 @@ class Window(QMainWindow):
 
         self.cur_time = time.time()
         self.platform_dps = 20
-        # self.plot_dist = False
         self.UiComponents()
-        # showing all the widgets
         self.show()
 
     # coordinate system
@@ -450,7 +440,6 @@ class Window(QMainWindow):
         # global layout
         layout = QGridLayout()
 
-        # Control Panel
         suptitle_label = QLabel("CN0566 FMCW Imaging Radar")
         font = suptitle_label.font()
         font.setPointSize(24)
@@ -475,7 +464,6 @@ class Window(QMainWindow):
         # Range resolution
         # Changes with the RF BW slider
         default_rf_bw = BW
-        # c = 3e8
         self.range_res_label = QLabel(
             "B<sub>RF</sub>: %0.2f MHz - R<sub>res</sub>: %0.2f m"
             % (default_rf_bw / 1e6, c / (2 * default_rf_bw))
@@ -484,7 +472,6 @@ class Window(QMainWindow):
         font.setPointSize(15)
         self.range_res_label.setFont(font)
         self.range_res_label.setAlignment(Qt.AlignRight)
-        # self.range_res_label.setMinimumWidth(300)
         self.range_res_label.setMinimumWidth(150)
 
         # RF bandwidth slider
@@ -498,31 +485,16 @@ class Window(QMainWindow):
 
         self.set_bw = QPushButton("Set RF Bandwidth")
         self.set_bw.pressed.connect(self.set_range_res)
-        # font = self.set_bw.font()
-        # font.setPointSize(15)
-        # self.set_bw.setFont(font)
 
         self.clear_fa = QPushButton("Reset 2-D imaging integration.")
         self.clear_fa.pressed.connect(self.reset_fa)
-        # font = self.clear_fa.font()
-        # font.setPointSize(15)
-        # self.clear_fa.setFont(font)
 
         self.integral_num = QLabel("{:d} scans integrated.".format(self.vol_int))
-        # font = self.integral_num.font()
-        # font.setPointSize(15)
-        # self.integral_num.setFont(font)
 
         self.ori_bt = QPushButton("Use real orientation.")
         self.ori_bt.pressed.connect(self.change_ori_mode)
-        # font = self.ori_bt.font()
-        # font.setPointSize(15)
-        # self.ori_bt.setFont(font)
 
         self.ori_dis = QLabel("current orientation {:.3f} <html><sup>o</sup></html>".format(self.cur_ori))
-        # font = self.ori_dis.font()
-        # font.setPointSize(15)
-        # self.ori_dis.setFont(font)
 
         for qtres in [self.set_bw, self.clear_fa, self.integral_num, self.ori_bt, self.ori_dis]:
             font = qtres.font()
@@ -544,8 +516,6 @@ class Window(QMainWindow):
 
         # FFT plot
         self.fft_plot = pg.plot()
-        # self.fft_plot.setMinimumWidth(400)
-        # self.fft_plot.setMaximumHeight(150)
         self.fft_plot.setMinimumWidth(200)
         self.fft_plot.setMaximumHeight(150)
         self.fft_curve = self.fft_plot.plot(self.freq, pen="y", width=6)
@@ -560,10 +530,6 @@ class Window(QMainWindow):
         
         self.fan_wid = pg.GraphicsLayoutWidget()
         self.fanaxs = self.fan_wid.addPlot()
-        # self.fan_wid.setMinimumWidth(1000)
-        # self.fan_wid.setMinimumHeight(350)
-        # self.fan_wid.setMinimumWidth(400)
-        # self.fan_wid.setMaximumHeight(400)
         self.fan_wid.setMaximumWidth(600)
         self.fan_wid.setMaximumHeight(800)
         self.fanimage = pg.ImageItem()
@@ -596,26 +562,19 @@ class Window(QMainWindow):
 
 
         # Waterfall plot
-        # self.waterfall = pg.PlotWidget()
+
         self.gr_wid = pg.GraphicsLayoutWidget()
-        # self.gr_wid.setMinimumHeight(200)
         self.waterfall = []
         self.imageitem = []
         for ip in range(3):
             self.waterfall.append( self.gr_wid.addPlot() )
-        # self.waterfall = self.gr_wid.addPlot()
+
             self.imageitem.append( pg.ImageItem() )
             self.waterfall[ip].addItem(self.imageitem[ip])
             self.set_Quads(self.imageitem[ip])
-        
-        # self.imageitem1 = pg.ImageItem()
-        # self.waterfall1.addItem(self.imageitem1)
-            # zoom_freq = 40e3
-            # self.waterfall[ip].setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]))
             self.waterfall[ip].setRange(xRange=(self.tframe[0], self.tframe[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
             self.waterfall[ip].setTitle("Waterfall AZ {:d}".format(int(self.wf_az[ip])), **title_style)
             self.waterfall[ip].setLabel("left", "Frequency", units="Hz", **label_style)
-            # self.waterfall[ip].setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
             self.waterfall[ip].setLabel("bottom", "Frame", **label_style)
             self.waterfall[ip].getAxis("bottom").setTickFont(font)
             self.waterfall[ip].getAxis("left").setTickFont(font)
@@ -632,15 +591,12 @@ class Window(QMainWindow):
             orientation = 'h',
             pen='#8888FF', hoverPen='#EEEEFF', hoverBrush='#EEEEFF80'
         )
-        # bar.setImageItem( self.imageitem, insert_in=self.waterfall )
         bar.setImageItem( self.imageitem )
         self.bar_wid = pg.GraphicsLayoutWidget()
         self.bar_wid.addItem(bar, 0, 0, 1, 5)
         self.bar_wid.setMaximumHeight(80)
 
         layout.addWidget(suptitle_label, 0, 0, 1, 5)
-
-        # layout.addWidget(self.fft_plot, 1, 0, 2, 5)
         layout.addWidget(self.fan_wid, 1, 0, 4, 1)
         btlayout = QGridLayout()
         btlayout.addWidget(self.fft_plot, 0, 0, 3, 2)
@@ -666,23 +622,16 @@ class Window(QMainWindow):
         vol_page.setLayout(vol_layout)
         vol_layout.addWidget(self.vol_wid, 0,0,18,5)
         font = tab.tabBar().font()
-        font.setPointSize(20)  # Change the font size to whatever you desire
+        font.setPointSize(20)
         tab.tabBar().setFont(font)
         tab.tabBar().setExpanding(True)
         tab.addTab(waterfall_page, 'waterfall')
         tab.addTab(vol_page, 'SAR imaging')
         tab.setTabShape(QTabWidget.Triangular)
-
         layout.addWidget(tab,2,1,3,1)
         layout.addWidget(self.bar_wid, 6, 0, 1, 2)
-        # self.br_wid = pg.GraphicsLayoutWidget()
-        # self.cb = self.br_wid.addPlot()
-        # self.cb.addItem(bar)
-
-        # layout.addWidget(self.br_wid, 19, 0, 1, 5)
 
         widget.setLayout(layout)
-        # setting this widget as central widget of the main window
         self.setCentralWidget(widget)
 
     def set_vol_Quads(self, im):
@@ -706,8 +655,6 @@ class Window(QMainWindow):
     def update_az(self, text, ix):
         # print(text)
         if is_float(text):
-            # self.az[ix] = float(text)
-            # self.waterfall[ix].setTitle("Waterfall AZ {:d}".format(int(self.az[ix])), **title_style)
             self.wfid[ix] = self.get_wfid(float(text))
             self.wf_az[ix] = self.fan_az[self.wfid[ix]]
             self.waterfall[ix].setTitle("Waterfall AZ {:d}".format(int(self.wf_az[ix])), **title_style)
@@ -832,7 +779,6 @@ def update():
     rx_bursts = np.zeros((CPI_pulse, good_ramp_samples), dtype=np.complex_)
     # win_funct = np.blackman(win.freq.size)
     win_funct = nuttall_window(good_ramp_samples)
-    # for avgpulse in range(1):
     for ia, steer in enumerate(win.az):
         my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
         my_phaser.gpios.gpio_burst = 0
@@ -852,20 +798,8 @@ def update():
         fainc = np.sum(data_ar[:,np.newaxis,:]*np.exp(-1j*element_ph[:,:,np.newaxis]),axis=0)
         update_pixel = np.abs(win.fan_az-steer)<ath
         fxdata[update_pixel,:]=fainc[update_pixel,:]
-
-        # N = win.fft_size
-        # t = np.arange(N)/sample_rate
-        # data = [np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t)),np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t))]
-        # data_sum = data[0] + data[1]
-        # fxdata[ia,:] = 1 / win.fft_size * np.fft.fft( data_sum[start_offset_samples:start_offset_samples+good_ramp_samples] * win_funct, n=win.fft_size)
-        # fxdata[:,ia,:] = data_ar
         frdata += data_ar[0]+data_ar[1]
-        # for burst in range(num_bursts):
-        #     start_index = start_offset_samples + (burst) * fft_size
-        #     stop_index = start_index + good_ramp_samples
-        #     rx_bursts[burst] = sum_data[start_index:stop_index]
-        # fxdata[ia,:] = 1 / N * np.fft.fft(rx_bursts * win_funct,axis=1)
-        # frdata += 1 / N * np.fft.fft(rx_bursts * win_funct,axis=1)
+
     win.fabuf += fadata
     win.vol_int += 1
     win.integral_num.setText("{:d} scans integrated.".format(win.vol_int))
@@ -874,7 +808,6 @@ def update():
     ampl = np.abs(fxdata)
     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
 
-    # win.img[:,0,:] = ampl[:3,:]
     win.fan = ampl
 
     pr = np.abs(frdata)
@@ -886,7 +819,6 @@ def update():
         win.img[ip,0,:] = ampl[win.wfid[ip],:]
         win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
     win.fanimage.setImage(win.fan - win.offset + win.r_cal, autoLevels=False)
-    # volcut = np.array([win.fabuf[:,:,win.vol_ind[0]],win.fabuf[:,:,win.vol_ind[1]]])
     volcut = win.fabuf
     volcut = np.abs(volcut)
     volcut = 20 * np.log10(volcut / ref + 10 ** -20)
@@ -898,8 +830,6 @@ def update():
     elapsed_time = end_time - start_time
     print(f"Elapsed time: {elapsed_time*1e3} ms")
     start_time = end_time
-    # win.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
-
 
 timer = QtCore.QTimer()
 timer.timeout.connect(update)
