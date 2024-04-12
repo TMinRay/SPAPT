@@ -318,7 +318,7 @@ def nuttall_window(N):
     return a[0] - a[1]*np.cos(2*x) + a[2]*np.cos(4*x) - a[3]*np.cos(6*x)
 
 title_style = {"size": "20pt"}
-label_style = {"color": "#FFF", "font-size": "14pt"}
+label_style = {"color": "#FFF", "font-size": "12pt"}
 
 class Window(QMainWindow):
     def __init__(self):
@@ -333,7 +333,16 @@ class Window(QMainWindow):
         # self.az = np.arange(-30,31,15)
         # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,3)))
         # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,2)))
-        self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,5)))
+        # self.az = np.concatenate((np.arange(-30,31,15),np.arange(-30,31,5)))
+        self.az = np.arange(-30,31,5)
+        # self.az = np.arange(-30,31,15)
+        self.fan_az = np.arange(-30,30.5,1.25)
+        # self.az = np.arange(-30,31,30)
+        # self.fan_az = np.arange(-30,30.5,0.5)
+        self.wf_az = np.arange(-15,16,15)
+        self.wfid = np.zeros(self.wf_az.size,dtype=np.int_)
+        for ix in range(self.wf_az.size):
+            self.wfid[ix] = self.get_wfid(self.wf_az[ix])
         # self.az = np.zeros((5))
         Fs = sample_rate
         # self.freq = np.arange(-Fs/2,Fs/2,Fs/self.fft_size)
@@ -341,7 +350,7 @@ class Window(QMainWindow):
                                         # should be fine while signal frequency is positive.
         self.tframe = np.arange(50)
         self.clear_img()
-        self.fan = np.full((self.az.size-5, self.freq.size),-300)
+        self.fan = np.full((self.fan_az.size, self.freq.size),-300)
         self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
         self.offset = -300
         tex,tey = np.meshgrid(np.arange(-30,31,1),np.arange(-29,30,1))
@@ -350,6 +359,7 @@ class Window(QMainWindow):
         thetaaz = np.arctan2(np.sin(np.deg2rad(tex)),np.sin(np.deg2rad(tey)))
         thetaele = np.arccos(np.sqrt(1-np.sin(np.deg2rad(tex))**2-np.sin(np.deg2rad(tey))**2))
         self.gar = np.array([np.sin(thetaele)*np.sin(thetaaz), np.sin(thetaele)*np.cos(thetaaz), np.cos(thetaele)])
+        self.fan_ar = np.array([np.zeros(self.fan_az.size), np.sin(np.deg2rad(self.fan_az)), np.cos(np.deg2rad(self.fan_az))])
         self.de = np.transpose( np.array([[0,1,0],[0,-1,0]]) )
         # self.vol_ind = [208,228] # 3 5 m
         # self.vol_ind = [198,218] # 2 4 m
@@ -358,7 +368,7 @@ class Window(QMainWindow):
         self.reset_fa()
 
         self.cur_time = time.time()
-        self.platform_dps = 10
+        self.platform_dps = 20
         # self.plot_dist = False
         self.UiComponents()
         # showing all the widgets
@@ -399,6 +409,12 @@ class Window(QMainWindow):
         a0 = np.matmul( rotation_z(self.cur_ori) , np.matmul( rotation_x(-steer) , np.array([[0],[0],[1]])))[:,:,np.newaxis]
         ar = self.gar - a0
         element_phase = np.sum(ar[:,np.newaxis,:,:]*np.matmul( rotation_z(self.cur_ori) , self.de)[:,:,np.newaxis,np.newaxis],axis=0)
+        return element_phase
+
+    def DBF1d(self,steer):
+        a0 = np.matmul( rotation_x(-steer) , np.array([[0],[0],[1]]))
+        ar = self.fan_ar - a0
+        element_phase = np.sum(ar[:,np.newaxis,:]*self.de[:,:,np.newaxis],axis=0)
         return element_phase
 
     def get_ori_from_solo(self):
@@ -519,7 +535,7 @@ class Window(QMainWindow):
             self.az_input.append(QLineEdit())
             self.az_input[ip].setAlignment(Qt.AlignCenter)
             self.az_input[ip].setStyleSheet("background-color: #444; color: #fff; border: 1px solid #666;")
-            self.az_input[ip].setText('{:d}'.format(int(self.az[ip])))
+            self.az_input[ip].setText('{:d}'.format(int(self.wf_az[ip])))
             AZLayout.addWidget(self.az_input[ip])
             self.az_input[ip].setFont(font)
             def update_az_wrapper(text, ip=ip):
@@ -535,7 +551,7 @@ class Window(QMainWindow):
         self.fft_curve = self.fft_plot.plot(self.freq, pen="y", width=6)
 
         self.fft_plot.setLabel("bottom", text="Frequency", units="Hz", **label_style)
-        self.fft_plot.setLabel("left", text="Magnitude", units="dB", **label_style)
+        self.fft_plot.setLabel("left", text="Mag.", units="dB", **label_style)
         self.fft_plot.setTitle("Received Signal - Frequency Spectrum", **title_style)
         self.fft_plot.setYRange(-55, 5)
         self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
@@ -597,7 +613,7 @@ class Window(QMainWindow):
             # zoom_freq = 40e3
             # self.waterfall[ip].setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]))
             self.waterfall[ip].setRange(xRange=(self.tframe[0], self.tframe[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
-            self.waterfall[ip].setTitle("Waterfall AZ {:d}".format(int(self.az[ip])), **title_style)
+            self.waterfall[ip].setTitle("Waterfall AZ {:d}".format(int(self.wf_az[ip])), **title_style)
             self.waterfall[ip].setLabel("left", "Frequency", units="Hz", **label_style)
             # self.waterfall[ip].setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
             self.waterfall[ip].setLabel("bottom", "Frame", **label_style)
@@ -653,8 +669,8 @@ class Window(QMainWindow):
         font.setPointSize(20)  # Change the font size to whatever you desire
         tab.tabBar().setFont(font)
         tab.tabBar().setExpanding(True)
-        tab.addTab(vol_page, 'SAR imaging')
         tab.addTab(waterfall_page, 'waterfall')
+        tab.addTab(vol_page, 'SAR imaging')
         tab.setTabShape(QTabWidget.Triangular)
 
         layout.addWidget(tab,2,1,3,1)
@@ -679,7 +695,7 @@ class Window(QMainWindow):
     def set_Quads(self, im, plot_az = False):
         tr = QtGui.QTransform()
         if plot_az:
-            trans_para = get_img_trans(self.az[5:],self.plot_xaxis)
+            trans_para = get_img_trans(self.fan_az,self.plot_xaxis)
         else:
             trans_para = get_img_trans(self.tframe,self.plot_xaxis)
         tr.translate(trans_para[0], trans_para[1])
@@ -690,10 +706,18 @@ class Window(QMainWindow):
     def update_az(self, text, ix):
         # print(text)
         if is_float(text):
-            self.az[ix] = float(text)
-            self.waterfall[ix].setTitle("Waterfall AZ {:d}".format(int(self.az[ix])), **title_style)
+            # self.az[ix] = float(text)
+            # self.waterfall[ix].setTitle("Waterfall AZ {:d}".format(int(self.az[ix])), **title_style)
+            self.wfid[ix] = self.get_wfid(float(text))
+            self.wf_az[ix] = self.fan_az[self.wfid[ix]]
+            self.waterfall[ix].setTitle("Waterfall AZ {:d}".format(int(self.wf_az[ix])), **title_style)
         else:
             print(is_float(text))
+
+    def get_wfid(self, input_az):
+        angdiff = np.abs(self.fan_az-input_az)
+        output_ind = np.where(angdiff == np.min(angdiff))[0]
+        return output_ind[0]
 
     def get_range_res(self):
         """ Updates the slider bar label with RF bandwidth and range resolution
@@ -726,7 +750,7 @@ class Window(QMainWindow):
         self.clear_img()
 
     def clear_img(self):
-        self.img = np.full((5, self.tframe.size, self.freq.size),-300)
+        self.img = np.full((3, self.tframe.size, self.freq.size),-300)
 
     def get_dist(self):
         bw = self.bw_slider.value() * 1e6
@@ -802,36 +826,40 @@ ref = 2 ** 12
 start_time = time.time()
 def update():
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
-    fxdata = np.zeros((win.az.size, win.freq.size),dtype=np.complex_)
+    fxdata = np.zeros((win.fan_az.size, win.freq.size),dtype=np.complex_)
     fadata = np.zeros((*win.thetax.shape, 2),dtype=np.complex_)
-    ath=np.abs(win.az[-1]-win.az[-2])/1.5
+    ath=np.abs(win.az[-1]-win.az[-2])/1.9
     rx_bursts = np.zeros((CPI_pulse, good_ramp_samples), dtype=np.complex_)
     # win_funct = np.blackman(win.freq.size)
     win_funct = nuttall_window(good_ramp_samples)
     # for avgpulse in range(1):
     for ia, steer in enumerate(win.az):
         my_phaser.set_beam_phase_diff(steer_angle_to_phase_diff(steer, output_freq,0.014)*180/np.pi)
-        # sleep(5e-2)
-        # for i in range(4):
         my_phaser.gpios.gpio_burst = 0
         my_phaser.gpios.gpio_burst = 1
         my_phaser.gpios.gpio_burst = 0
         data = my_sdr.rx()
         win.update_ori()
-        
+
         element_ph = win.DBF(steer)
         data_ar = np.array(data)
         data_ar = 1 / win.fft_size * np.fft.fft( data_ar[:,start_offset_samples:start_offset_samples+good_ramp_samples] * win_funct, n=win.fft_size)
         fainc = np.sum(data_ar[:,np.newaxis,[win.vol_ind]]*np.exp(-1j*element_ph[:,:,:,np.newaxis]),axis=0)
         update_pixel = np.abs(element_ph[0,:,:])<np.deg2rad(ath)
         fadata[update_pixel,:]=fainc[update_pixel,:]
+
+        element_ph = win.DBF1d(steer)
+        fainc = np.sum(data_ar[:,np.newaxis,:]*np.exp(-1j*element_ph[:,:,np.newaxis]),axis=0)
+        update_pixel = np.abs(win.fan_az-steer)<ath
+        fxdata[update_pixel,:]=fainc[update_pixel,:]
+
         # N = win.fft_size
         # t = np.arange(N)/sample_rate
         # data = [np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t)),np.exp(2j*np.pi*(50e3*t**2+(30+steer)*1e4*t))]
         # data_sum = data[0] + data[1]
         # fxdata[ia,:] = 1 / win.fft_size * np.fft.fft( data_sum[start_offset_samples:start_offset_samples+good_ramp_samples] * win_funct, n=win.fft_size)
-        fxdata[ia,:] = data_ar[0]+data_ar[1]
-        frdata += fxdata[ia,:]
+        # fxdata[:,ia,:] = data_ar
+        frdata += data_ar[0]+data_ar[1]
         # for burst in range(num_bursts):
         #     start_index = start_offset_samples + (burst) * fft_size
         #     stop_index = start_index + good_ramp_samples
@@ -842,17 +870,20 @@ def update():
     win.vol_int += 1
     win.integral_num.setText("{:d} scans integrated.".format(win.vol_int))
     win.ori_dis.setText("current orientation {:.3f} <html><sup>o</sup></html>".format(win.cur_ori))
+    win.img = np.roll( win.img, 1, axis=1 )
     ampl = np.abs(fxdata)
     ampl = 20 * np.log10(ampl / ref + 10 ** -20)
-    win.img = np.roll( win.img, 1, axis=1 )
-    win.img[:,0,:] = ampl[:5,:]
-    win.fan = ampl[5:,:]
+
+    # win.img[:,0,:] = ampl[:3,:]
+    win.fan = ampl
+
     pr = np.abs(frdata)
     pr = 20 * np.log10(pr / ref + 10 ** -20)
     pr = pr - np.max(pr)
-    if np.abs(win.offset-np.max(win.img))>5:
-        win.offset=np.max(win.img)
+    if np.abs(win.offset-np.max(win.fan))>5:
+        win.offset=np.max(win.fan)
     for ip in range(3):
+        win.img[ip,0,:] = ampl[win.wfid[ip],:]
         win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
     win.fanimage.setImage(win.fan - win.offset + win.r_cal, autoLevels=False)
     # volcut = np.array([win.fabuf[:,:,win.vol_ind[0]],win.fabuf[:,:,win.vol_ind[1]]])
