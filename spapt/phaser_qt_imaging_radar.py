@@ -597,7 +597,7 @@ class Window(QMainWindow):
 
         AZLayout = QHBoxLayout()
         self.az_input = []
-        for ip in range(5):
+        for ip in range(3):
             self.az_input.append(QLineEdit())
             self.az_input[ip].setAlignment(Qt.AlignCenter)
             self.az_input[ip].setStyleSheet("background-color: #444; color: #fff; border: 1px solid #666;")
@@ -630,8 +630,8 @@ class Window(QMainWindow):
         # self.fan_wid.setMinimumHeight(350)
         # self.fan_wid.setMinimumWidth(400)
         # self.fan_wid.setMaximumHeight(400)
-        self.fan_wid.setMinimumWidth(400)
-        self.fan_wid.setMaximumHeight(400)
+        self.fan_wid.setMaximumWidth(600)
+        self.fan_wid.setMaximumHeight(800)
         self.fanimage = pg.ImageItem()
         self.set_Quads(self.fanimage, plot_az=True)
         # self.fanaxs.setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
@@ -667,7 +667,7 @@ class Window(QMainWindow):
         # self.gr_wid.setMinimumHeight(200)
         self.waterfall = []
         self.imageitem = []
-        for ip in range(5):
+        for ip in range(3):
             self.waterfall.append( self.gr_wid.addPlot() )
         # self.waterfall = self.gr_wid.addPlot()
             self.imageitem.append( pg.ImageItem() )
@@ -707,7 +707,7 @@ class Window(QMainWindow):
         layout.addWidget(suptitle_label, 0, 0, 1, 5)
 
         # layout.addWidget(self.fft_plot, 1, 0, 2, 5)
-        layout.addWidget(self.fan_wid, 1, 0, 4, 2)
+        layout.addWidget(self.fan_wid, 1, 0, 4, 1)
         btlayout = QGridLayout()
         btlayout.addWidget(self.fft_plot, 0, 0, 3, 2)
         btlayout.addWidget(self.x_axis_check, 3, 0)
@@ -719,7 +719,7 @@ class Window(QMainWindow):
         btlayout.addWidget(self.ori_dis, 6, 1)
         btlayout.addWidget(self.clear_fa, 7, 0)
         btlayout.addWidget(self.integral_num, 7, 1)
-        layout.addLayout(btlayout, 1, 2, 4, 1)
+        layout.addLayout(btlayout, 1, 1, 1, 1)
 
         tab = QTabWidget()
         waterfall_page = QWidget(self)
@@ -739,8 +739,8 @@ class Window(QMainWindow):
         tab.addTab(waterfall_page, 'waterfall')
         tab.setTabShape(QTabWidget.Triangular)
 
-        layout.addWidget(tab,8,0,18,5)
-        layout.addWidget(self.bar_wid, 26, 0, 1, 5)
+        layout.addWidget(tab,2,1,3,1)
+        layout.addWidget(self.bar_wid, 6, 0, 1, 2)
         # self.br_wid = pg.GraphicsLayoutWidget()
         # self.cb = self.br_wid.addPlot()
         # self.cb.addItem(bar)
@@ -881,7 +881,7 @@ class Window(QMainWindow):
             self.fft_plot.setLabel("bottom", text="Range", units="m")
             # self.fft_plot.setXRange(0, range_x/2)
             self.fft_plot.setXRange(0, 5)
-            for ip in range(5):
+            for ip in range(3):
                 # self.waterfall[ip].setRange(yRange=(0, range_x/2))
                 self.waterfall[ip].setRange(yRange=(0, 5))
                 self.waterfall[ip].setLabel("left", "Range", units="m")
@@ -897,7 +897,7 @@ class Window(QMainWindow):
             self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
             self.fft_plot.setTitle("Received Signal - Frequency Spectrum", **title_style)
             self.fft_plot.setLabel("bottom", text="Frequency", units="Hz")
-            for ip in range(5):
+            for ip in range(3):
                 self.waterfall[ip].setRange(yRange=(self.freq[0],self.freq[-1]/2))
                 self.waterfall[ip].setLabel("left", "Frequency", units="Hz")
                 self.set_Quads(self.imageitem[ip])
@@ -986,7 +986,7 @@ def update():
     pr = pr - np.max(pr)
     if np.abs(win.offset-np.max(win.img))>5:
         win.offset=np.max(win.img)
-    for ip in range(5):
+    for ip in range(3):
         win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
     win.fanimage.setImage(win.fan - win.offset + win.r_cal, autoLevels=False)
     # volcut = np.array([win.fabuf[:,:,win.vol_ind[0]],win.fabuf[:,:,win.vol_ind[1]]])
