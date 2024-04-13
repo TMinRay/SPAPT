@@ -461,6 +461,9 @@ class Window(QMainWindow):
         self.set_bw = QPushButton("Set RF Bandwidth")
         self.set_bw.pressed.connect(self.set_range_res)
 
+        self.set_dp = QPushButton("Reset Display Range")
+        self.set_dp.pressed.connect(self.reset_display_range)
+
         self.clear_fa = QPushButton("Reset 2-D imaging integration.")
         self.clear_fa.pressed.connect(self.reset_fa)
 
@@ -471,7 +474,7 @@ class Window(QMainWindow):
 
         self.ori_dis = QLabel("current orientation {:.3f} <html><sup>o</sup></html>".format(self.cur_ori))
 
-        for qtres in [self.set_bw, self.clear_fa, self.integral_num, self.ori_bt, self.ori_dis]:
+        for qtres in [self.set_bw, self.set_dp, self.clear_fa, self.integral_num, self.ori_bt, self.ori_dis]:
             font = qtres.font()
             font.setPointSize(15)
             qtres.setFont(font)
@@ -508,7 +511,7 @@ class Window(QMainWindow):
         self.fan_wid.setMaximumHeight(800)
         self.fanimage = pg.ImageItem()
         self.set_Quads(self.fanimage, plot_az=True)
-        # self.fanaxs.setRange(xRange=(self.az[0], self.az[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
+        self.fanaxs.setRange(xRange=(self.fan_az[0], self.fan_az[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
         self.fanaxs.setTitle("Realtime Imaging", **title_style)
         self.fanaxs.setLabel("left", "Frequency", units="Hz", **label_style)
         self.fanaxs.setLabel("bottom", "Azimuth", units="<html><sup>o</sup></html>", **label_style)
@@ -553,7 +556,6 @@ class Window(QMainWindow):
         self.imageitem = []
         for ip in range(3):
             self.waterfall.append( self.gr_wid.addPlot() )
-
             self.imageitem.append( pg.ImageItem() )
             self.waterfall[ip].addItem(self.imageitem[ip])
             self.set_Quads(self.imageitem[ip])
@@ -594,7 +596,8 @@ class Window(QMainWindow):
         btlayout.addWidget(self.r_cal_check, 3, 1)
         btlayout.addWidget(self.range_res_label, 4, 1)
         btlayout.addWidget(self.bw_slider, 4, 0)
-        btlayout.addWidget(self.set_bw, 5, 0, 1, 2)
+        btlayout.addWidget(self.set_dp, 5, 0, 1, 1)
+        btlayout.addWidget(self.set_bw, 5, 1, 1, 1)
         btlayout.addWidget(self.ori_bt, 6, 0)
         btlayout.addWidget(self.ori_dis, 6, 1)
         btlayout.addWidget(self.clear_fa, 7, 0)
@@ -768,6 +771,21 @@ class Window(QMainWindow):
         newt = time.time()
         self.cur_time = newt
         print(self.cur_ori)
+
+    def reset_display_range(self):
+        for ip in range(2):
+            self.volplot[ip].setRange(xRange=(self.thetay[0,0], self.thetay[-1,0] ), yRange=(self.thetax[0,0],self.thetax[0,-1]))
+        self.fft_plot.setYRange(-55, 5)
+        if self.x_axis_check.isChecked() == True:
+            for ip in range(3):
+                self.waterfall[ip].setRange(xRange=(self.tframe[0], self.tframe[-1] ), yRange=(0, 5))
+            self.fanaxs.setRange(xRange=(self.fan_az[0], self.fan_az[-1] ), yRange=(0, 5))
+            self.fft_plot.setXRange(0, 5)
+        else:
+            for ip in range(3):
+                self.waterfall[ip].setRange(xRange=(self.tframe[0], self.tframe[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
+            self.fanaxs.setRange(xRange=(self.fan_az[0], self.fan_az[-1] ), yRange=(self.freq[0],self.freq[-1]/2))
+            self.fft_plot.setXRange(self.freq[0],self.freq[-1]/2)
 
     def cleanup(self):
         # Release resources here
