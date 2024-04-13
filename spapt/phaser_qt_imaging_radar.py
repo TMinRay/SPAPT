@@ -392,6 +392,10 @@ class Window(QMainWindow):
             self.use_real_ori = True
             self.ori_bt.setText("Use software orientation.")
 
+    def get_ori_from_solo(self):
+        posstr = com(self.HOST, self.PORT, self.TIMEOUT, b'cn0566 Request solo position.')
+        return ((22.5-float(posstr.decode().split(',')[1]))%360)
+
     def DBF(self,steer):
         a0 = np.matmul( rotation_z(self.cur_ori) , np.matmul( rotation_x(-steer) , np.array([[0],[0],[1]])))[:,:,np.newaxis]
         ar = self.gar - a0
@@ -403,32 +407,6 @@ class Window(QMainWindow):
         ar = self.fan_ar - a0
         element_phase = np.sum(ar[:,np.newaxis,:]*self.de[:,:,np.newaxis],axis=0)
         return element_phase
-
-    def get_ori_from_solo(self):
-        posstr = com(self.HOST, self.PORT, self.TIMEOUT, b'cn0566 Request solo position.')
-        return ((22.5-float(posstr.decode().split(',')[1]))%360)
-
-    def cleanup(self):
-        # Release resources here
-        my_sdr.tx_destroy_buffer()
-        print("Tx Buffer Destroyed!")
-
-        # # To disable TDD and revert to non-TDD (standard) mode
-        tdd.enable = False
-        sdr_pins.gpio_phaser_enable = False
-        tdd.out_channel1_polarity = not(sdr_pins.gpio_phaser_enable)
-        tdd.out_channel2_polarity = sdr_pins.gpio_phaser_enable
-        tdd.enable = True
-        tdd.enable = False
-        print("Disable TDD and revert to non-TDD (standard) mode")
-
-    def reset_fa(self):
-        self.fabuf = np.full((*self.thetax.shape, 2), 0, dtype=np.complex_)
-        self.cur_ori = 0
-        self.vol_int = 0
-        newt = time.time()
-        self.cur_time = newt
-        print(self.cur_ori)
 
     # method for components
     def UiComponents(self):
@@ -568,7 +546,6 @@ class Window(QMainWindow):
             self.volplot[ip].getAxis("bottom").setTickFont(font)
             self.volplot[ip].getAxis("left").setTickFont(font)
 
-
         # Waterfall plot
 
         self.gr_wid = pg.GraphicsLayoutWidget()
@@ -697,6 +674,12 @@ class Window(QMainWindow):
         output_ind = np.where(rdiff == np.min(rdiff))[0]
         return output_ind[0]
 
+    def get_dist(self):
+        bw = self.bw_slider.value() * 1e6
+        slope = bw / ramp_time_s
+        dist = (self.freq - signal_freq) * c / (4 * slope)
+        return dist
+
     def get_range_res(self):
         """ Updates the slider bar label with RF bandwidth and range resolution
         Returns:
@@ -726,15 +709,6 @@ class Window(QMainWindow):
         my_phaser.enable = 0
         self.change_x_axis(self.x_axis_check.isChecked())
         self.clear_img()
-
-    def clear_img(self):
-        self.img = np.full((3, self.tframe.size, self.freq.size),-300)
-
-    def get_dist(self):
-        bw = self.bw_slider.value() * 1e6
-        slope = bw / ramp_time_s
-        dist = (self.freq - signal_freq) * c / (4 * slope)
-        return dist
 
     def change_x_axis(self, state):
         """ Toggles between showing frequency and range for the x-axis
@@ -783,6 +757,31 @@ class Window(QMainWindow):
             self.r_cal = self.r_cal[np.newaxis,:]
         else:
             self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
+
+    def clear_img(self):
+        self.img = np.full((3, self.tframe.size, self.freq.size),-300)
+
+    def reset_fa(self):
+        self.fabuf = np.full((*self.thetax.shape, 2), 0, dtype=np.complex_)
+        self.cur_ori = 0
+        self.vol_int = 0
+        newt = time.time()
+        self.cur_time = newt
+        print(self.cur_ori)
+
+    def cleanup(self):
+        # Release resources here
+        my_sdr.tx_destroy_buffer()
+        print("Tx Buffer Destroyed!")
+
+        # # To disable TDD and revert to non-TDD (standard) mode
+        tdd.enable = False
+        sdr_pins.gpio_phaser_enable = False
+        tdd.out_channel1_polarity = not(sdr_pins.gpio_phaser_enable)
+        tdd.out_channel2_polarity = sdr_pins.gpio_phaser_enable
+        tdd.enable = True
+        tdd.enable = False
+        print("Disable TDD and revert to non-TDD (standard) mode")
 
 def is_float(value):
     try:
