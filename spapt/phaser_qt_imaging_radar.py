@@ -266,9 +266,13 @@ iq = 0.9 * (i + 1j * q)
 my_sdr._ctx.set_timeout(30000)
 my_sdr._rx_init_channels() 
 # Send data
-my_sdr.tx([iq, iq * 0])  # only send data to the 1st channel (that's all we need)
+my_sdr.tx([iq, iq])      # send data to the both channel (it should send only one
+                         # with my_sdr.tx([iq, iq *0 ])
+                         # However, there maybe a glitch while enable TDD engine,
+                         # it sometime doesn't transmit if only send one channel.)
                          # same time the base band signal is not correctly send out 
                          # double check the recevied signal is at correct frequency
+                         # temporary send TX in both channel to go around bug.
 
 def steer_angle_to_phase_diff(th,fc,d):
     return 2*np.pi*d*fc*np.sin(th*np.pi/180)/3e8
@@ -330,8 +334,8 @@ class Window(QMainWindow):
         # self.setGeometry(20, 20, 972, 1440)
         self.fft_size = fft_size
 
-        self.az = np.arange(-30,31,5)           # exact analog beamforming angle
-        self.fan_az = np.arange(-30,30.5,1.25)  # desired beamforming angle (hybrid)
+        self.az = np.arange(-30,31,2.5)           # exact analog beamforming angle
+        self.fan_az = np.arange(-30,30.5,2.5)  # desired beamforming angle (hybrid)
         self.wf_az = np.arange(-15,16,15)       # desired waterfall display angle
         self.wfid = np.zeros(self.wf_az.size,dtype=np.int_) # desired waterfall angle index
 
@@ -342,7 +346,7 @@ class Window(QMainWindow):
         self.clear_img()
         self.fan = np.full((self.fan_az.size, self.freq.size),-300)
         self.r_cal = np.zeros((self.freq.size))[np.newaxis,:]
-        self.offset = -300
+        self.offset = -50
         tex,tey = np.meshgrid(np.arange(-30,31,1),np.arange(-29,30,1))
         self.thetax = tex               # desired SAR angle in x
         self.thetay = tey               # desired SAR angle in y
@@ -569,10 +573,10 @@ class Window(QMainWindow):
         for ip in range(2):
             self.imageitem.append( self.volitem[ip] )
         # self.waterfall.setTickFont
+        cm = pg.colormap.get('nipy_spectral', source='matplotlib', skipCache=True)
         bar = pg.ColorBarItem(
-            values = (-50, 5),
-            colorMap='CET-L4',
-            # label='horizontal color bar',
+            values = (-35, -10),
+            colorMap=cm,
             limits = (None, None),
             rounding=0.1,
             orientation = 'h',
@@ -823,6 +827,7 @@ def update():
     frdata = np.zeros((win.freq.size),dtype=np.complex_)
     fxdata = np.zeros((win.fan_az.size, win.freq.size),dtype=np.complex_)
     fadata = np.zeros((*win.thetax.shape, 2),dtype=np.complex_)
+    # updatebuf = np.zeros((win.az.size,*win.thetax.shape, 2),dtype=np.complex_)
     ath=np.abs(win.az[-1]-win.az[-2])/1.9
     rx_bursts = np.zeros((CPI_pulse, good_ramp_samples), dtype=np.complex_)
     # win_funct = np.blackman(win.freq.size)
@@ -847,9 +852,13 @@ def update():
         update_pixel = np.abs(win.fan_az-steer)<ath
         fxdata[update_pixel,:]=fainc[update_pixel,:]
         frdata += data_ar[0]+data_ar[1]
+        # updatebuf[ia,:] = fadata
 
     win.fabuf += fadata
     win.vol_int += 1
+    # if win.vol_int%2 ==0 :
+    #     with open('test{:>02d}.npy'.format(win.vol_int), 'wb') as f:
+    #         np.save(f, updatebuf)
     win.integral_num.setText("{:d} scans integrated.".format(win.vol_int))
     win.ori_dis.setText("current orientation {:.3f} <html><sup>o</sup></html>".format(win.cur_ori))
     win.img = np.roll( win.img, 1, axis=1 )
@@ -861,8 +870,8 @@ def update():
     pr = np.abs(frdata)
     pr = 20 * np.log10(pr / ref + 10 ** -20)
     pr = pr - np.max(pr)
-    if np.abs(win.offset-np.max(win.fan))>5:
-        win.offset=np.max(win.fan)
+    # if np.abs(win.offset-np.max(win.fan))>5:
+    #     win.offset=np.max(win.fan)
     for ip in range(3):
         win.img[ip,0,:] = ampl[win.wfid[ip],:]
         win.imageitem[ip].setImage(win.img[ip,:,:] - win.offset + win.r_cal, autoLevels=False)
@@ -870,8 +879,10 @@ def update():
     volcut = win.fabuf
     volcut = np.abs(volcut)
     volcut = 20 * np.log10(volcut / ref + 10 ** -20)
-    win.volitem[0].setImage(volcut[:,:,0] - win.offset + win.r_cal[0,win.vol_ind[0]], autoLevels=False)
-    win.volitem[1].setImage(volcut[:,:,1] - win.offset + win.r_cal[0,win.vol_ind[1]], autoLevels=False)
+    win.volitem[0].setImage(volcut[:,:,0] - win.offset + win.r_cal[0,win.vol_ind[0]] - 15, autoLevels=False)
+    win.volitem[1].setImage(volcut[:,:,1] - win.offset + win.r_cal[0,win.vol_ind[1]] - 15, autoLevels=False)
+    # with open('fig{:>02d}.npy'.format(win.vol_int), 'wb') as f:
+    #     np.save(f, volcut[:,:,0])
     win.fft_curve.setData(win.plot_xaxis, pr)
     global start_time
     end_time = time.time()
