@@ -1,7 +1,7 @@
 # SPAPT
 Signal Processing for Analog Phaser Tomography.
 
-This is the digital singal processing simulation model for the Analog device cn0566 hybrid phaser kit.
+This project comprises tomography software featuring a graphical user interface (GUI) and a simulator designed for the Analog Devices CN0566 Hybrid Phase Kit.
 
 ## Project Overview
 Our project aims to pioneer the utilization of cost-effective one-dimensional analog phase array technology in radar tomography. By integrating the cn0566 phaser array onto a rotational platform, aligned axis with center of phaser, we aim to pioneer three-dimensional tomography synthesis through inventive signal processing algorithms.
@@ -21,7 +21,12 @@ Implement an intuitive user interface with command hosts for dynamic adjustments
 
 
 ## Installation
-SPAPT only needs [numpy](https://pypi.org/project/numpy/), [matplotlib](https://pypi.org/project/matplotlib/) and [scipy](https://pypi.org/project/scipy/).
+SPAPT phaser GUI needs [pyadi-iio](https://github.com/analogdevicesinc/pyadi-iio), [libiio](https://github.com/analogdevicesinc/libiio), [pyqtgraph](https://github.com/pyqtgraph/pyqtgraph) and [PyQt5](https://pypi.org/project/PyQt5/)
+
+>[!CAUTION]
+>This project utilizes the TDD engine feature of pyadi-iio and requires the use of the **origin/cn0566_dev_phaser_merge** branch or its equivalent in future updates.
+
+SPAPT simulator needs [numpy](https://pypi.org/project/numpy/), [matplotlib](https://pypi.org/project/matplotlib/) and [scipy](https://pypi.org/project/scipy/).
 
 Simply clone SPAPT form repository.
 
@@ -30,10 +35,15 @@ git clone https://github.com/TMinRay/SPAPT.git
 ```
 
 ## Usage
+To start the phaser GUI
+```bash
+$ cd spapt
+$ python phaser_qt_imaging_radar.py
+```
 
 To start the simulator
 ```bash
-$ python simradar
+$ python simradar.py
 ```
 
 interactive commands use ` `(space) to differentiate blocks.
