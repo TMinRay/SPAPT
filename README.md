@@ -51,5 +51,5 @@ $ python simradar.py
 See the [simulator/README.md](simulator/README.md) for example and command table.
 
 ## Conclusion
-Our project has the potential to demonstrate the feasibility of utilizing a one-dimensional phaser array configuration for acquiring three-dimensional tomography. This innovative approach could find applications in space-borne radar systems. The technique presents a significant advantage in terms of weight savings—fewer elements translate to lighter payloads, resulting in substantial budget savings. Remarkably, this is achieved without compromising data quality, making our solution a compelling prospect for cost-effective yet high-quality radar tomography applications, especially in space-based scenarios.
+Our project demonstrates the feasibility of utilizing a one-dimensional phaser array configuration for acquiring three-dimensional tomography. This innovative approach could find applications in space-borne radar systems. The technique presents a significant advantage in terms of weight savings—fewer elements translate to lighter payloads, resulting in substantial budget savings. Remarkably, this is achieved without compromising data quality, making our solution a compelling prospect for cost-effective yet high-quality radar tomography applications, especially in space-based scenarios.
 
